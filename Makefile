@@ -353,11 +353,6 @@ libasound_DIR=$(PROJDIR)/package/libasound
 libasound_BUILDDIR=$(BUILDDIR)/libasound
 libasound_MAKE=$(MAKE) DESTDIR=$(DESTDIR) -C $(libasound_BUILDDIR)
 
-libasound_libc1_LIBS+=libm.so.* libm-*.so libdl.so.* libdl-*.so \
-  libpthread.so.* libpthread-*.so librt.so.* librt-*.so \
-  libc.so.* libc-*.so ld-*.so.* ld-*.so
-libc1_LIBS+=$(libasound_libc1_LIBS)
-
 libasound_configure $(libasound_BUILDDIR)/Makefile:
 	[ -d "$(libasound_BUILDDIR)" ] || $(MKDIR) $(libasound_BUILDDIR)
 	cd $(libasound_BUILDDIR) && \
@@ -555,7 +550,7 @@ openssl_%: $(openssl_BUILDDIR)/configdata.pm
 
 #------------------------------------
 #
-libnl_DIR=$(PROJDIR)/package/libnl-3.2.25
+libnl_DIR=$(PROJDIR)/package/libnl
 libnl_BUILDDIR=$(BUILDDIR)/libnl
 libnl_MAKE=$(MAKE) DESTDIR=$(DESTDIR) -C $(libnl_BUILDDIR)
 
@@ -575,7 +570,7 @@ libnl_%: $(libnl_BUILDDIR)/Makefile
 #------------------------------------
 # dep: openssl, libnl, linux_headers
 #
-wpasup_DIR=$(PROJDIR)/package/wpa_supplicant-2.9
+wpasup_DIR=$(PROJDIR)/package/wpa_supplicant
 wpasup_BUILDDIR=$(BUILDDIR)/wpasup
 wpasup_MAKE=$(MAKE) CC=$(CC) LIBNL_INC="$(BUILDDIR)/sysroot/include/libnl3" \
   EXTRA_CFLAGS="-I$(BUILDDIR)/sysroot/include" LDFLAGS="-L$(BUILDDIR)/sysroot/lib" \
@@ -609,6 +604,8 @@ wpasup_%: $(wpasup_BUILDDIR)/wpa_supplicant/.config
 # dep for other platform: linux_bzImage
 #
 dist_DIR?=$(DESTDIR)
+wlregdb_DIR?=$(PROJDIR)/package/wireless-regdb
+ap6212_FWDIR=$(PROJDIR)/package/ap6212
 
 # reference from linux_dtbs
 dist_DTINCDIR+=$(linux_DIR)/scripts/dtc/include-prefixes
@@ -633,8 +630,9 @@ ifeq ("$(NB)","")
 	$(MAKE) atf scp
 	$(MAKE) ub linux_Image.gz linux_dtbs linux_modules linux_headers_install \
 	  zlib_install
-	$(MAKE) linux_modules_install libasound_install ncursesw_install bb_install
-	$(MAKE) alsautil_install ff_install
+	$(MAKE) libasound_install ncursesw_install linux_modules_install \
+	  openssl_install libnl_install
+	$(MAKE) alsautil_install ff_install bb_install wpasup_install
 endif
 	[ -d $(dist_DIR)/boot ] || $(MKDIR) $(dist_DIR)/boot
 	$(CP) $(ub_BUILDDIR)/u-boot-sunxi-with-spl.bin \
@@ -671,6 +669,13 @@ endif
 	$(call CP_TAR,$(dist_DIR)/rootfs,$(BUILDDIR)/sysroot, \
 	  --exclude="*.a" --exclude="*.la" --exclude="*.o", \
 	  lib lib64 usr/lib usr/lib64)
+	[ -d $(dist_DIR)/rootfs/lib/firmware ] || \
+	  $(MKDIR) $(dist_DIR)/rootfs/lib/firmware
+	$(CP) $(wlregdb_DIR)/regulatory.db $(wlregdb_DIR)/regulatory.db.p7s \
+	  $(dist_DIR)/rootfs/lib/firmware/
+	[ -d $(dist_DIR)/rootfs/lib/firmware/brcm ] || \
+	  $(MKDIR) $(dist_DIR)/rootfs/lib/firmware/brcm
+	$(CP) $(ap6212_FWDIR)/* $(dist_DIR)/rootfs/lib/firmware/brcm/
 	for i in $(addprefix $(dist_DIR)/rootfs/, \
 	    usr/lib/libgcc_s.so.1 usr/lib64/libgcc_s.so.1 \
 	    bin sbin lib lib64 usr/bin usr/sbin usr/lib usr/lib64); do \
