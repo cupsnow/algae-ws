@@ -1,0 +1,21 @@
+#!/bin/sh
+
+[ -d /proc ] || mkdir -p /proc
+mount /proc
+
+[ -d /sys ] || mkdir -p /sys
+mount /sys
+
+# devtmpfs may automount
+[ -d /dev ] || mkdir -p /dev
+grep -e "^devtmpfs\s*/dev\s*devtmpfs\s*" /proc/mounts ||
+  mount /dev
+
+[ -d /dev/pts ] || mkdir -p /dev/pts
+mount /dev/pts
+
+[ -f /etc/hostname ] && hostname -F /etc/hostname
+
+[ -d /var/run ] || mkdir -p /var/run
+mount -t tmpfs -osize=10m none /var/run
+

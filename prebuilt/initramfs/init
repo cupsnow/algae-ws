@@ -1,0 +1,30 @@
+#!/bin/sh
+
+[ -d /proc ] || mkdir -p /proc
+[ -f /proc/mounts ] || mount -t proc none /proc
+
+[ -d /sys ] || mkdir -p /sys
+# [ -d /sys/class ] || mount -t sysfs none /sys
+[ -n "`cat /proc/mounts | sed -n -e 's/^.*\s*\/sys\s*sysfs/&/p'`" ] || \
+  mount -t sysfs none /sys
+
+[ -d /dev ] || mkdir -p /dev
+[ -n "`cat /proc/mounts | sed -n -e 's/^.*\s*\/dev\s*devtmpfs/&/p'`" ] || \
+  mount -t devtmpfs none /dev
+
+[ -f /sbin/mdev ] && [ -f /proc/sys/kernel/hotplug ] && \
+  ( echo /sbin/mdev > /proc/sys/kernel/hotplug; mdev -s )
+
+hostname bbxm
+
+exec getty -L  console 115200 -n -l /bin/sh
+
+# mkdir /roothost
+# mkdir /newroot
+# Wait for block devices to be detected
+# sleep 5
+# mount /dev/mmcblk0p12 /roothost
+# mount -oloop /roothost/media/0/alarm-fs.img /newroot
+# mkdir -p /newroot/mnt/userdata
+# mount --move /roothost /newroot/mnt/userdata
+# exec switch_root /newroot /sbin/init
