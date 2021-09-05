@@ -46,9 +46,6 @@ help:
 	echo "APP_ATTR: $(APP_ATTR), APP_PLATFORM: $(APP_PLATFORM) \
 	  , TOOLCHAIN_SYSROOT: $(TOOLCHAIN_SYSROOT) \
 	  , OR1K_TOOLCHAIN_SYSROOT: $(OR1K_TOOLCHAIN_SYSROOT)"
-	$(call CP_TAR,$(PROJDIR)/tmp/sr,$(TOOLCHAIN_SYSROOT), \
-	  --exclude="*/gconv" --exclude="*.a" --exclude="*.o" --exclude="*.la", \
-	  lib lib64 usr/lib usr/lib64)
 
 #------------------------------------
 # dep: apt install dvipng imagemagick plantuml
@@ -667,7 +664,7 @@ endif
 	mkenvimage -s 131072 -o $(dist_DIR)/boot/uboot.env $(BUILDDIR)/uboot.env.txt
 	$(call CP_TAR,$(dist_DIR)/rootfs,$(TOOLCHAIN_SYSROOT), \
 	  --exclude="*/gconv" --exclude="*.a" --exclude="*.o" --exclude="*.la", \
-	  lib lib64 usr/lib usr/lib64)
+	  lib lib64 sbin usr/lib usr/lib64 usr/bin usr/sbin )
 	$(call CP_TAR,$(dist_DIR)/rootfs,$(BUILDDIR)/sysroot, \
 	  --exclude="bin/amidi" --exclude="share/aclocal" --exclude="share/man" \
 	  --exclude="share/sounds" --exclude="share/doc" \

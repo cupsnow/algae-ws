@@ -21,5 +21,7 @@ mount -t tmpfs -osize=10m none /var/run
 
 mount -t debugfs none /sys/kernel/debug &> /dev/null
 
+[ -e /etc/ld.so.cache ] || ldconfig -C /var/run/ld.so.cache
+
 source /etc/init.d/start
 
