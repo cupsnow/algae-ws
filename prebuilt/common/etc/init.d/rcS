@@ -19,3 +19,7 @@ mount /dev/pts
 [ -d /var/run ] || mkdir -p /var/run
 mount -t tmpfs -osize=10m none /var/run
 
+mount -t debugfs none /sys/kernel/debug &> /dev/null
+
+source /etc/init.d/start
+

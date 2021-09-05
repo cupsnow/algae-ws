@@ -1,0 +1,7 @@
+#!/bin/sh
+
+for rcs in `ls /etc/init.d/S[0-9]*`; do
+  [ -x $rcs ] || continue;
+  echo "Start ... $rcs"
+  $rcs start
+done

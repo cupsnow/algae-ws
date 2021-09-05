@@ -14,23 +14,22 @@ export APP_ATTR?=$(APP_ATTR_bpi)
 APP_PLATFORM=$(strip $(filter xm bpi,$(APP_ATTR)))
 
 ifneq ("$(strip $(filter xm,$(APP_ATTR)))","")
-  TOOLCHAIN_PATH=$(HOME)/07_sw/gcc-arm-none-linux-gnueabihf
-  CROSS_COMPILE=$(shell $(TOOLCHAIN_PATH)/bin/*-gcc -dumpmachine)-
-  EXTRA_PATH+=$(TOOLCHAIN_PATH:%=%/bin)
-  TOOLCHAIN_SYSROOT?=$(abspath $(shell PATH=$(call ENVPATH,$(EXTRA_PATH)) && \
-    $(CC) -print-sysroot))
+TOOLCHAIN_PATH=$(HOME)/07_sw/gcc-arm-none-linux-gnueabihf
+CROSS_COMPILE=$(shell $(TOOLCHAIN_PATH)/bin/*-gcc -dumpmachine)-
+EXTRA_PATH+=$(TOOLCHAIN_PATH:%=%/bin)
+TOOLCHAIN_SYSROOT?=$(abspath $(shell PATH=$(call ENVPATH,$(EXTRA_PATH)) && \
+  $(CC) -print-sysroot))
 else ifneq ("$(strip $(filter bpi,$(APP_ATTR)))","")
-  TOOLCHAIN_PATH=$(HOME)/07_sw/gcc-aarch64-none-linux-gnu
-  CROSS_COMPILE=$(shell $(TOOLCHAIN_PATH)/bin/*-gcc -dumpmachine)-
-  EXTRA_PATH+=$(TOOLCHAIN_PATH:%=%/bin)
-  TOOLCHAIN_SYSROOT?=$(abspath $(shell PATH=$(call ENVPATH,$(EXTRA_PATH)) && \
-    $(CC) -print-sysroot))
-
-  OR1K_TOOLCHAIN_PATH=$(HOME)/07_sw/or1k-linux-musl
-  OR1K_CROSS_COMPILE=$(shell $(OR1K_TOOLCHAIN_PATH)/bin/*-gcc -dumpmachine)-
-  EXTRA_PATH+=$(OR1K_TOOLCHAIN_PATH:%=%/bin)
-  OR1K_TOOLCHAIN_SYSROOT?=$(abspath $(shell PATH=$(call ENVPATH,$(EXTRA_PATH)) && \
-    $(OR1K_CROSS_COMPILE)gcc -print-sysroot))
+TOOLCHAIN_PATH=$(HOME)/07_sw/gcc-aarch64-none-linux-gnu
+CROSS_COMPILE=$(shell $(TOOLCHAIN_PATH)/bin/*-gcc -dumpmachine)-
+EXTRA_PATH+=$(TOOLCHAIN_PATH:%=%/bin)
+TOOLCHAIN_SYSROOT?=$(abspath $(shell PATH=$(call ENVPATH,$(EXTRA_PATH)) && \
+  $(CC) -print-sysroot))
+OR1K_TOOLCHAIN_PATH=$(HOME)/07_sw/or1k-linux-musl
+OR1K_CROSS_COMPILE=$(shell $(OR1K_TOOLCHAIN_PATH)/bin/*-gcc -dumpmachine)-
+EXTRA_PATH+=$(OR1K_TOOLCHAIN_PATH:%=%/bin)
+OR1K_TOOLCHAIN_SYSROOT?=$(abspath $(shell PATH=$(call ENVPATH,$(EXTRA_PATH)) && \
+  $(OR1K_CROSS_COMPILE)gcc -print-sysroot))
 endif
 
 export PATH:=$(call ENVPATH,$(PROJDIR)/tool/bin $(EXTRA_PATH))
@@ -42,19 +41,20 @@ export PATH:=$(call ENVPATH,$(PROJDIR)/tool/bin $(EXTRA_PATH))
 #------------------------------------
 #
 help:
-	@echo "SHELL: $$SHELL, linux_RELSTR: $(linux_RELSTR)"
-	@echo "linux_VERSTR: $(linux_VERSTR)"
 	$(CC) -dumpmachine
 	$(OR1K_CROSS_COMPILE)gcc -dumpmachine
-	@echo "$(wildcard $(PROJDIR)/prebuilt/common/* \
-	  $(PROJDIR)/prebuilt/$(APP_PLATFORM)/common/*)"
+	echo "APP_ATTR: $(APP_ATTR), APP_PLATFORM: $(APP_PLATFORM) \
+	  , TOOLCHAIN_SYSROOT: $(TOOLCHAIN_SYSROOT) \
+	  , OR1K_TOOLCHAIN_SYSROOT: $(OR1K_TOOLCHAIN_SYSROOT)"
+	$(call CP_TAR,$(PROJDIR)/tmp/sr,$(TOOLCHAIN_SYSROOT), \
+	  --exclude="*/gconv" --exclude="*.a" --exclude="*.o" --exclude="*.la", \
+	  lib lib64 usr/lib usr/lib64)
 
 #------------------------------------
 # dep: apt install dvipng imagemagick plantuml
 #
 pyenv $(BUILDDIR)/pyenv:
 	virtualenv -p python3 $(BUILDDIR)/pyenv
-	@echo "Install package required for uboot, linux docs, etc."
 	. $(BUILDDIR)/pyenv/bin/activate && \
 	  python --version && \
 	  pip install sphinx_rtd_theme six \
@@ -62,7 +62,6 @@ pyenv $(BUILDDIR)/pyenv:
 
 pyenv2 $(BUILDDIR)/pyenv2:
 	virtualenv -p python2 $(BUILDDIR)/pyenv2
-	@echo "Install package required for uboot, linux docs, etc."
 	. $(BUILDDIR)/pyenv2/bin/activate && \
 	  python --version && \
 	  pip install sphinx_rtd_theme six
@@ -94,11 +93,11 @@ sunxitools_%: $(sunxitools_BUILDDIR)/Makefile
 #
 dtc_DIR?=$(PROJDIR)/package/dtc
 dtc_BUILDDIR?=$(BUILDDIR)/dtc
-dtc_MAKE=$(MAKE) NO_PYTHON=1 PREFIX= DESTDIR=$(DESTDIR) -C $(dtc_BUILDDIR)
+dtc_MAKE=$(MAKE) PREFIX= DESTDIR=$(DESTDIR) NO_PYTHON=1 -C $(dtc_BUILDDIR)
 # dtc_MAKE+=V=1
 
 $(dtc_BUILDDIR):
-	git clone --depth=1 $(dtc_DIR) $@
+	git clone $(dtc_DIR) $@
 
 dtc_distclean:
 	$(RM) $(dtc_BUILDDIR)
@@ -112,7 +111,8 @@ dtc_%: $(dtc_BUILDDIR)
 	$(dtc_MAKE) $(@:dtc_%=%)
 
 #------------------------------------
-# make atf_bl31
+# for bpi
+#   make atf_bl31
 #
 atf_DIR?=$(PROJDIR)/package/atf
 atf_BUILDDIR?=$(BUILDDIR)/atf
@@ -134,13 +134,15 @@ atf_doc: | $(BUILDDIR)/pyenv
 	  --transform="s/html/atf-docs/" \
 	  -C $(atf_BUILDDIR)/package/atf/docs/build html
 
-atf:
-	$(atf_MAKE)
+# atf:
+# 	$(atf_MAKE)
 
 atf_%:
 	$(atf_MAKE) $(@:atf_%=%)
 
 #------------------------------------
+# for bpi
+#   make crust_scp
 #
 crust_DIR?=$(PROJDIR)/package/crust
 crust_BUILDDIR?=$(BUILDDIR)/crust
@@ -155,11 +157,11 @@ crust_defconfig $(crust_BUILDDIR)/.config:
 $(addprefix crust_,clean distclean docs):
 	$(crust_MAKE) $(@:crust_%=%)
 
-# make crust_scp
+# crust: $(crust_BUILDDIR)/.config
+# 	$(crust_MAKE)
+
 crust_%: $(crust_BUILDDIR)/.config
 	$(crust_MAKE) $(@:crust_%=%)
-
-scp: crust_scp;
 
 #------------------------------------
 # ub_tools-only_defconfig ub_tools-only
@@ -178,7 +180,7 @@ ub_MAKE=$(ub_DEF_MAKE) -C $(ub_BUILDDIR)
 ub_mrproper ub_help:
 	$(ub_DEF_MAKE) -C $(ub_DIR) $(@:ub_%=%)
 
-# failed to out of tree by -f as linux
+# failed to build out-of-tree as of -f for linux
 APP_PLATFORM_ub_defconfig:
 	if [ -f "$(DOTCFG)" ]; then \
 	  $(MKDIR) $(ub_BUILDDIR) && \
@@ -605,7 +607,7 @@ wpasup_%: $(wpasup_BUILDDIR)/wpa_supplicant/.config
 #
 dist_DIR?=$(DESTDIR)
 wlregdb_DIR?=$(PROJDIR)/package/wireless-regdb
-ap6212_FWDIR=$(PROJDIR)/package/ap6212
+ap6212_FWDIR=$(PROJDIR)/package/ap6212/linux-firmware
 
 # reference from linux_dtbs
 dist_DTINCDIR+=$(linux_DIR)/scripts/dtc/include-prefixes
@@ -623,11 +625,15 @@ bpi_dist: dist_loadaddr=0x40080000 # 0x40200000
 bpi_dist: dist_compaddr=0x44000000
 bpi_dist: dist_compsize=0xb000000
 bpi_dist: dist_fdtaddr=0x4fa00000
+bpi_dist: dist_log={ $(if $(2),echo $(2) >> $(BUILDDIR)/$(1), \
+  echo "" > $(BUILDDIR)/$(1)); }
+bpi_dist: dist_cptar_log=$(call dist_log,cptar_log.txt,$(1))
+bpi_dist: dist_strip_log=$(call dist_log,strip_log.txt,$(1))
 bpi_dist:
 	[ -x $(PROJDIR)/tool/bin/dtc ] || $(MAKE) dtc_install
 	[ -x $(PROJDIR)/tool/bin/mkimage ] || $(MAKE) ub_tools_install
 ifeq ("$(NB)","")
-	$(MAKE) atf scp
+	$(MAKE) atf_bl31 crust_scp
 	$(MAKE) ub linux_Image.gz linux_dtbs linux_modules linux_headers_install \
 	  zlib_install
 	$(MAKE) libasound_install ncursesw_install linux_modules_install \
@@ -656,7 +662,7 @@ endif
 	else \
 	  echo "loadfdt=fatload mmc 0:1 \$${fdtaddr} $(basename $(notdir $(dist_dtb))).dtb" >> $(BUILDDIR)/uboot.env.txt; \
 	fi
-	echo "bootargs=console=ttyS0,115200n8 root=/dev/mmcblk2p2 rw rootwait" >> $(BUILDDIR)/uboot.env.txt
+	echo "bootargs=console=ttyS0,115200n8 rootfstype=ext4,ext2 root=/dev/mmcblk2p2 rw rootwait" >> $(BUILDDIR)/uboot.env.txt
 	echo "bootcmd=run loadkernel; run loadfdt; booti \$${loadaddr} - \$${fdtaddr}" >> $(BUILDDIR)/uboot.env.txt
 	mkenvimage -s 131072 -o $(dist_DIR)/boot/uboot.env $(BUILDDIR)/uboot.env.txt
 	$(call CP_TAR,$(dist_DIR)/rootfs,$(TOOLCHAIN_SYSROOT), \
@@ -664,7 +670,9 @@ endif
 	  lib lib64 usr/lib usr/lib64)
 	$(call CP_TAR,$(dist_DIR)/rootfs,$(BUILDDIR)/sysroot, \
 	  --exclude="bin/amidi" --exclude="share/aclocal" --exclude="share/man" \
-	  --exclude="share/sounds", \
+	  --exclude="share/sounds" --exclude="share/doc" \
+	  --exclude="share/ffmpeg/examples" --exclude="share/ffmpeg/*.ffpreset" \
+	  --exclude="share/locale", \
 	  etc bin sbin share usr/bin usr/sbin var linuxrc)
 	$(call CP_TAR,$(dist_DIR)/rootfs,$(BUILDDIR)/sysroot, \
 	  --exclude="*.a" --exclude="*.la" --exclude="*.o", \
@@ -673,42 +681,45 @@ endif
 	  $(MKDIR) $(dist_DIR)/rootfs/lib/firmware
 	$(CP) $(wlregdb_DIR)/regulatory.db $(wlregdb_DIR)/regulatory.db.p7s \
 	  $(dist_DIR)/rootfs/lib/firmware/
-	[ -d $(dist_DIR)/rootfs/lib/firmware/brcm ] || \
-	  $(MKDIR) $(dist_DIR)/rootfs/lib/firmware/brcm
-	$(CP) $(ap6212_FWDIR)/* $(dist_DIR)/rootfs/lib/firmware/brcm/
+	$(CP) $(ap6212_FWDIR)/* $(dist_DIR)/rootfs/
+	$(dist_strip_log)
 	for i in $(addprefix $(dist_DIR)/rootfs/, \
 	    usr/lib/libgcc_s.so.1 usr/lib64/libgcc_s.so.1 \
 	    bin sbin lib lib64 usr/bin usr/sbin usr/lib usr/lib64); do \
 	  [ ! -e "$$i" ] && { \
-	    echo "Strip skipping missing explicite $$i"; \
+	    $(call dist_strip_log,"Strip skipping missing explicite $$i"); \
 	    continue; \
 	  }; \
 	  [ -f "$$i" ] && { \
-	    echo "Strip explicite $$i"; \
+	    $(call dist_strip_log,"Strip explicite $$i"); \
 	    $(STRIP) -g $$i; \
 	    continue; \
 	  }; \
 	  [ -d "$$i" ] && { \
-	    echo "Strip recurse dir $$i"; \
+	    $(call dist_strip_log,"Strip recurse dir $$i"); \
 	    for j in `find $$i`; do \
+	      [[ "$$j" =~ .+(\.sh|\.pl|\.py|c_rehash|ncursesw6-config|alsaconf) ]] && { \
+	        $(call dist_strip_log,"Skip known script/file $$j"); \
+	        continue; \
+		  }; \
 	      [[ "$$j" =~ .*/lib/modules/.+\.ko ]] && { \
-	        echo "Strip implicite kernel module $$j"; \
+	        $(call dist_strip_log,"Strip implicite kernel module $$j"); \
 	        $(STRIP) -g $$j; \
 	        continue; \
 		  }; \
 		  [ ! -x "$$j" ] && { \
-	        echo "Strip skipping non-executable $$j"; \
+	        $(call dist_strip_log,"Strip skipping non-executable $$j"); \
 		    continue; \
 		  }; \
 		  [ -L "$$j" ] && { \
-		    echo "Strip skipping symbolic $$j -> `readlink $$j`"; \
+		    $(call dist_strip_log,"Strip skipping symbolic $$j -> `readlink $$j`"); \
 		    continue; \
 		  }; \
 		  [ -d "$$j" ] && { \
-		    echo "Strip skipping dirname $$j"; \
+		    $(call dist_strip_log,"Strip skipping dirname $$j"); \
 		    continue; \
 		  }; \
-	      echo "Strip implicite file $$j"; \
+	      $(call dist_strip_log,"Strip implicite file $$j"); \
 	      $(STRIP) -g $$j; \
 	    done; \
 	  }; \
@@ -716,9 +727,12 @@ endif
 	$(CP) $(wildcard $(PROJDIR)/prebuilt/common/* \
 	  $(PROJDIR)/prebuilt/$(APP_PLATFORM)/common/*) \
 	  $(dist_DIR)/rootfs/
-	depmod -b $(dist_DIR)/rootfs \
-	  $(if $(wildcard $(linux_BUILDDIR)/System.map),-e -F$(linux_BUILDDIR)/System.map) \
-	  -C $(dist_DIR)/rootfs/etc/depmod.d/ $(linux_RELSTR)
+	# depmod -b $(dist_DIR)/rootfs \
+	#   $(if $(wildcard $(linux_BUILDDIR)/System.map),-e -F$(linux_BUILDDIR)/System.map) \
+	#   -C $(dist_DIR)/rootfs/etc/depmod.d/ $(linux_RELSTR)
+	$(bb_DIR)/examples/depmod.pl \
+	  -b $(dist_DIR)/rootfs/lib/modules/$(linux_RELSTR) \
+	  -F $(linux_BUILDDIR)/System.map
 	# du -ac $(dist_DIR) | sort -n
 
 # sudo dd if=$(dist_DIR)/boot/u-boot-sunxi-with-spl.bin of=/dev/sdxxx bs=1024 seek=8

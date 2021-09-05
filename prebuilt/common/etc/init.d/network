@@ -1,0 +1,31 @@
+#!/bin/sh
+
+ieee80211_regdom=TW
+
+case "$1" in
+start)
+  ifconfig lo up 127.0.0.1
+  route add -net 127.0.0.0 netmask 255.0.0.0 lo
+
+  [ -e /sys/module/compat ] || modprobe compat
+  [ -e /sys/module/cfg80211 ] || modprobe cfg80211 ieee80211_regdom=${ieee80211_regdom}
+  [ -e /sys/module/brcmutil ] || modprobe brcmutil
+  [ -e /sys/module/brcmfmac ] || modprobe brcmfmac debug=15
+  ;;
+stop)
+  for i in brcmfmac brcmutil cfg80211 compat; do
+    [ -e /sys/module/$i ] && rmmod $i
+  done
+  ;;
+*)
+  cat <<-EOHERE
+USAGE
+    `basename $0` [start | stop]
+
+OPTIONS
+    start  Start service
+    stop   Stop service
+
+EOHERE
+  ;;
+esac

@@ -1,0 +1,13 @@
+# vscode/eclipse at project root
+/.settings/
+
+# vscode file/dir at project root
+/.vscode*
+
+# eclipse at project root
+/.cproject
+/.project
+
+# intermediate/output file at project root
+/build/
+/destdir/

@@ -1,0 +1,7 @@
+#!/bin/sh
+
+for rcs in `ls /etc/init.d/K[0-9]* | tac`; do
+  [ -x $rcs ] || continue;
+  echo "Stop ... $rcs"
+  $rcs stop
+done
