@@ -637,7 +637,9 @@ ifeq ("$(NB)","")
 	  openssl_install libnl_install
 	$(MAKE) alsautil_install ff_install bb_install wpasup_install
 endif
-	[ -d $(dist_DIR)/boot ] || $(MKDIR) $(dist_DIR)/boot
+	for i in dev proc root sys tmp var/run; do \
+	  [ -d $(dist_DIR)/boot/$$i ] || $(MKDIR) $(dist_DIR)/boot/$$i; \
+	done
 	$(CP) $(ub_BUILDDIR)/u-boot-sunxi-with-spl.bin \
 	  $(linux_BUILDDIR)/arch/arm64/boot/Image.gz $(dist_dtb) \
 	  $(dist_DIR)/boot/
