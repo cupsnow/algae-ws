@@ -598,6 +598,23 @@ wpasup_%: $(wpasup_BUILDDIR)/wpa_supplicant/.config
 	$(wpasup_MAKE) $(@:wpasup_%=%)
 
 #------------------------------------
+#
+mdns_DIR=$(PROJDIR)/package/mDNSResponder
+mdns_BUILDDIR=$(BUILDDIR)/mdns
+mdns_MAKE=$(MAKE) CC=$(CC) LD=$(LD) ST=$(STRIP) CFLAGS_PTHREAD=-pthread \
+  LINKOPTS_PTHREAD=-pthread -C $(mdns_BUILDDIR)/mDNSPosix
+
+mdns_defconfig $(mdns_BUILDDIR)/Makefile:
+	[ -d $(mdns_BUILDDIR) ] || $(MKDIR) $(mdns_BUILDDIR)
+	$(CP) $(mdns_DIR)/* $(mdns_BUILDDIR)/
+
+mdns: | $(mdns_BUILDDIR)/Makefile
+	$(mdns_MAKE)
+
+mdns_%: | $(mdns_BUILDDIR)/Makefile
+	$(mdns_MAKE) $(@:mdns_%=%)
+
+#------------------------------------
 # dep: ub ub_tools linux_dtbs bb dtc
 # dep for bpi: linux_Image.gz
 # dep for other platform: linux_bzImage
