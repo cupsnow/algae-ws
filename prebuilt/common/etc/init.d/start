@@ -1,7 +1,13 @@
 #!/bin/sh
 
-for rcs in `ls /etc/init.d/S[0-9]*`; do
-  [ -x $rcs ] || continue;
-  echo "Start ... $rcs"
-  $rcs start
+. /etc/init.d/func
+
+lo start
+
+daemon start ifplugd -Mpql
+
+for script in `find /etc/init.d -iname S[0-9]*`; do
+  [ -x $script ] || continue;
+  echo "Start ... $script"
+  $script start
 done

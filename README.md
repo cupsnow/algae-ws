@@ -1,3 +1,29 @@
+# Table of Contents <!-- omit in toc -->
+- [Introduction](#introduction)
+  - [Terminoligy / Abbr for this doc.](#terminoligy--abbr-for-this-doc)
+  - [BananaPi M64](#bananapi-m64)
+    - [Build](#build)
+    - [Boot](#boot)
+    - [Snap](#snap)
+  - [bbxm](#bbxm)
+
+
+<!-- grouping links -->
+
+
+# Introduction
+
+
+## Terminoligy / Abbr for this doc.
+-   Project - Software project
+-   Source tree - The directory structure for this project
+-   Host - The machine used to build this project
+-   Target - The machine used to run outcome of this project
+-   Target runtime - The running target environemnt
+-   Builder - Script or tools participants to build this project
+-   Script - Executable source (mostly clear text)
+-   Tool/Util - Software tool (application)
+
 ## BananaPi M64
 
 ### Build

@@ -9,9 +9,10 @@ SHELL=/bin/bash
 
 APP_ATTR_xm?=xm
 APP_ATTR_bpi?=bpi
-export APP_ATTR?=$(APP_ATTR_bpi)
+APP_ATTR_ub20?=ub20
+export APP_ATTR?=$(APP_ATTR_ub20)
 
-APP_PLATFORM=$(strip $(filter xm bpi,$(APP_ATTR)))
+APP_PLATFORM=$(strip $(filter xm bpi ub20,$(APP_ATTR)))
 
 ifneq ("$(strip $(filter xm,$(APP_ATTR)))","")
 TOOLCHAIN_PATH=$(HOME)/07_sw/gcc-arm-none-linux-gnueabihf
@@ -33,6 +34,13 @@ OR1K_TOOLCHAIN_SYSROOT?=$(abspath $(shell PATH=$(call ENVPATH,$(EXTRA_PATH)) && 
 endif
 
 export PATH:=$(call ENVPATH,$(PROJDIR)/tool/bin $(EXTRA_PATH))
+# export LD_LIBRARY_PATH:=$(call ENVPATH,$(PROJDIR)/tool/lib $(LD_LIBRARY_PATH))
+
+BUILD_SYSROOT?=$(BUILDDIR)/sysroot-$(APP_PLATFORM)
+
+# $(BUILD_PKGCFG_ENV) pkg-config --list-all
+BUILD_PKGCFG_ENV+=PKG_CONFIG_LIBDIR="$(BUILD_SYSROOT)/lib/pkgconfig" \
+  PKG_CONFIG_SYSROOT_DIR="$(BUILD_SYSROOT)"
 
 # $(info Makefile ... APP_ATTR: $(APP_ATTR), APP_PLATFORM: $(APP_PLATFORM) \
 #   , TOOLCHAIN_SYSROOT: $(TOOLCHAIN_SYSROOT), OR1K_TOOLCHAIN_SYSROOT: $(OR1K_TOOLCHAIN_SYSROOT) \
@@ -41,11 +49,20 @@ export PATH:=$(call ENVPATH,$(PROJDIR)/tool/bin $(EXTRA_PATH))
 #------------------------------------
 #
 help:
-	$(CC) -dumpmachine
-	$(OR1K_CROSS_COMPILE)gcc -dumpmachine
-	echo "APP_ATTR: $(APP_ATTR), APP_PLATFORM: $(APP_PLATFORM) \
-	  , TOOLCHAIN_SYSROOT: $(TOOLCHAIN_SYSROOT) \
-	  , OR1K_TOOLCHAIN_SYSROOT: $(OR1K_TOOLCHAIN_SYSROOT)"
+	@echo -e "$(strip $(foreach i,RED GREEN BLUE CYAN YELLOW MAGENTA, \
+	  $(ANSI_$(i))$(i))$(ANSI_NORMAL))"
+	@echo "$(strip $(foreach i,APP_ATTR BUILD_SYSROOT TOOLCHAIN_SYSROOT \
+	  OR1K_TOOLCHAIN_SYSROOT, \
+	  $(i): "'"'"$($(i))"'"'"))"
+# @$(BUILD_PKGCFG_ENV) pkg-config --list-all
+# @echo "$(dist_DIR)/rootfs/lib/modules/$(linux_KERNELRELEASE)/"
+# @echo "$(dist_DIR)/rootfs/lib/modules/`make -s linux_kernelrelease`/"
+	$(bb_DIR)/examples/depmod.pl \
+	-b "$(dist_DIR)/rootfs/lib/modules/`$(linux_MAKE) -s kernelrelease`" \
+	-F $(linux_BUILDDIR)/System.map
+
+var_%:
+	@echo "$(strip $($(@:var_%=%)))"
 
 #------------------------------------
 # dep: apt install dvipng imagemagick plantuml
@@ -54,8 +71,7 @@ pyenv $(BUILDDIR)/pyenv:
 	virtualenv -p python3 $(BUILDDIR)/pyenv
 	. $(BUILDDIR)/pyenv/bin/activate && \
 	  python --version && \
-	  pip install sphinx_rtd_theme six \
-	    sphinxcontrib-plantuml
+	  pip install sphinx_rtd_theme six sphinxcontrib-plantuml
 
 pyenv2 $(BUILDDIR)/pyenv2:
 	virtualenv -p python2 $(BUILDDIR)/pyenv2
@@ -67,16 +83,15 @@ pyenv2 $(BUILDDIR)/pyenv2:
 # dep: dtc
 #
 sunxitools_DIR=$(PROJDIR)/package/sunxi-tools
-sunxitools_BUILDDIR=$(BUILDDIR)/sunxitools
-sunxitools_INCDIR=$(PROJDIR)/tool/include
-sunxitools_LIBDIR=$(PROJDIR)/tool/lib
+sunxitools_BUILDDIR=$(BUILDDIR)/sunxitools-host
+sunxitools_CFLAGS=-I$(PROJDIR)/tool/include -L$(PROJDIR)/tool/lib
 
 sunxitools_MAKE=$(MAKE) CROSS_COMPILE=$(CROSS_COMPILE) \
-  CFLAGS="-I$(PROJDIR)/tool/include -L$(PROJDIR)/tool/lib" \
-  DESTDIR=$(DESTDIR) PREFIX= -C $(sunxitools_BUILDDIR)
+  CFLAGS="$(sunxitools_CFLAGS)" DESTDIR=$(DESTDIR) PREFIX= \
+  -C $(sunxitools_BUILDDIR)
 
 sunxitools_defconfig $(sunxitools_BUILDDIR)/Makefile:
-	git clone depth=1 $(sunxitools_DIR) $(sunxitools_BUILDDIR)
+	git clone $(sunxitools_DIR) $(sunxitools_BUILDDIR)
 
 sunxitools_install: DESTDIR=$(PROJDIR)/tool
 
@@ -89,7 +104,7 @@ sunxitools_%: $(sunxitools_BUILDDIR)/Makefile
 #------------------------------------
 #
 dtc_DIR?=$(PROJDIR)/package/dtc
-dtc_BUILDDIR?=$(BUILDDIR)/dtc
+dtc_BUILDDIR?=$(BUILDDIR)/dtc-host
 dtc_MAKE=$(MAKE) PREFIX= DESTDIR=$(DESTDIR) NO_PYTHON=1 -C $(dtc_BUILDDIR)
 # dtc_MAKE+=V=1
 
@@ -112,9 +127,9 @@ dtc_%: $(dtc_BUILDDIR)
 #   make atf_bl31
 #
 atf_DIR?=$(PROJDIR)/package/atf
-atf_BUILDDIR?=$(BUILDDIR)/atf
-atf_DEF_MAKE=$(MAKE) CROSS_COMPILE=$(CROSS_COMPILE) \
-  DEBUG=1 BUILD_BASE=$(atf_BUILDDIR)
+atf_BUILDDIR?=$(BUILDDIR)/atf-$(APP_PLATFORM)
+atf_DEF_MAKE=$(MAKE) CROSS_COMPILE=$(CROSS_COMPILE) DEBUG=1 \
+  BUILD_BASE=$(atf_BUILDDIR)
 ifneq ("$(strip $(filter bpi,$(APP_ATTR)))","")
 atf_DEF_MAKE+=ARCH=aarch64 PLAT=sun50i_a64
 else
@@ -142,7 +157,7 @@ atf_%:
 #   make crust_scp
 #
 crust_DIR?=$(PROJDIR)/package/crust
-crust_BUILDDIR?=$(BUILDDIR)/crust
+crust_BUILDDIR?=$(BUILDDIR)/crust-$(APP_PLATFORM)
 crust_MAKE=$(MAKE) OBJ=$(crust_BUILDDIR) SRC=$(crust_DIR) \
   CROSS_COMPILE=$(OR1K_CROSS_COMPILE) -f $(crust_DIR)/Makefile \
   -C $(crust_BUILDDIR)
@@ -165,7 +180,7 @@ crust_%: $(crust_BUILDDIR)/.config
 # dep for bpi: atf_bl31, crust_scp
 #
 ub_DIR?=$(PROJDIR)/package/uboot
-ub_BUILDDIR?=$(BUILDDIR)/uboot
+ub_BUILDDIR?=$(BUILDDIR)/uboot-$(APP_PLATFORM)
 ub_DEF_MAKE?=$(MAKE) ARCH=arm CROSS_COMPILE=$(CROSS_COMPILE) \
   KBUILD_OUTPUT=$(ub_BUILDDIR) CONFIG_TOOLS_DEBUG=1
 ifneq ("$(strip $(filter bpi,$(APP_ATTR)))","")
@@ -202,8 +217,7 @@ ub_defconfig $(ub_BUILDDIR)/.config:
 ub_distclean:
 	$(RM) $(ub_BUILDDIR)
 
-# dep: apt install dvipng imagemagick
-#      apt install texlive-latex-extra
+# dep: apt install dvipng imagemagick texlive-latex-extra
 #      pip install sphinx_rtd_theme six
 ub_htmldocs: | $(BUILDDIR)/pyenv $(ub_BUILDDIR)/.config
 ifeq ("$(NB)","")
@@ -211,15 +225,17 @@ ifeq ("$(NB)","")
 	  $(ub_MAKE) htmldocs
 endif
 	tar -Jcvf $(BUILDDIR)/uboot-docs.tar.xz --show-transformed-names \
-	  --transform="s/output/uboot-docs/" -C $(ub_BUILDDIR)/doc output
+	  --transform="s/output/uboot-docs/" -C $(ub_BUILDDIR)/doc \
+	  output
 
 ub_tools_install: DESTDIR=$(PROJDIR)/tool
 ub_tools_install: ub_tools
 	[ -d $(DESTDIR)/bin ] || $(MKDIR) $(DESTDIR)/bin
-	for i in dumpimage fdtgrep gen_eth_addr gen_ethaddr_crc \
-	    mkenvimage mkimage proftool spl_size_limit; do \
-	  $(CP) $(ub_BUILDDIR)/tools/$$i $(DESTDIR)/bin/; \
-	done
+	cd $(ub_BUILDDIR)/tools && \
+	  rsync -avR --info=progress2 \
+	    dumpimage fdtgrep gen_eth_addr gen_ethaddr_crc mkenvimage mkimage \
+		proftool spl_size_limit \
+		$(DESTDIR)/bin/
 
 ub: $(ub_BUILDDIR)/.config
 	$(ub_MAKE)
@@ -232,18 +248,17 @@ ub_%: $(ub_BUILDDIR)/.config
 #------------------------------------
 #
 linux_DIR?=$(PROJDIR)/package/linux
-linux_BUILDDIR?=$(BUILDDIR)/linux
-linux_DEF_MAKE?=$(MAKE) CROSS_COMPILE=$(CROSS_COMPILE) KBUILD_OUTPUT=$(linux_BUILDDIR) \
-  INSTALL_HDR_PATH=$(INSTALL_HDR_PATH) INSTALL_MOD_PATH=$(INSTALL_MOD_PATH) \
-  LOADADDR=$(LOADADDR) CONFIG_INITRAMFS_SOURCE="$(CONFIG_INITRAMFS_SOURCE)"
+linux_BUILDDIR?=$(BUILDDIR)/linux-$(APP_PLATFORM)
+linux_DEF_MAKE?=$(MAKE) CROSS_COMPILE=$(CROSS_COMPILE) \
+  KBUILD_OUTPUT=$(linux_BUILDDIR) INSTALL_HDR_PATH=$(INSTALL_HDR_PATH) \
+  INSTALL_MOD_PATH=$(INSTALL_MOD_PATH) \
+  CONFIG_INITRAMFS_SOURCE="$(CONFIG_INITRAMFS_SOURCE)" LOADADDR=$(LOADADDR)
 ifneq ("$(strip $(filter bpi,$(APP_ATTR)))","")
 linux_DEF_MAKE+=ARCH=arm64
 else
 linux_DEF_MAKE+=ARCH=arm
 endif
 linux_MAKE=$(linux_DEF_MAKE) -C $(linux_BUILDDIR)
-linux_RELSTR=$(shell PATH=$(PATH) && $(linux_MAKE) -s kernelrelease)
-linux_VERSTR=$(shell PATH=$(PATH) && $(linux_MAKE) -s kernelversion)
 
 linux_mrproper linux_help:
 	$(linux_DEF_MAKE) -C $(linux_DIR) $(@:linux_%=%)
@@ -280,14 +295,13 @@ ifeq ("$(NB)","")
 	. $(BUILDDIR)/pyenv/bin/activate && \
 	  $(linux_MAKE) htmldocs
 endif
-	tar -Jcvf $(BUILDDIR)/linux-docs.tar.xz \
-	  --show-transformed-names \
-	  --transform="s/output/linux-docs/" \
-	  -C $(linux_BUILDDIR)/Documentation output
+	tar -Jcvf $(BUILDDIR)/linux-docs.tar.xz --show-transformed-names \
+	  --transform="s/output/linux-docs/" -C $(linux_BUILDDIR)/Documentation \
+	  output
 
-linux_modules_install: INSTALL_MOD_PATH=$(BUILDDIR)/sysroot
+linux_modules_install: INSTALL_MOD_PATH=$(BUILD_SYSROOT)
 
-linux_headers_install: INSTALL_HDR_PATH=$(BUILDDIR)/sysroot
+linux_headers_install: INSTALL_HDR_PATH=$(BUILD_SYSROOT)
 
 bpi_linux_LOADADDR?=0x40200000
 
@@ -306,11 +320,9 @@ linux_%: $(linux_BUILDDIR)/.config
 #------------------------------------
 #
 bb_DIR?=$(PROJDIR)/package/busybox
-bb_BUILDDIR=$(BUILDDIR)/busybox
-bb_DEF_MAKE=$(MAKE) CROSS_COMPILE=$(CROSS_COMPILE) \
-  CONFIG_PREFIX=$(CONFIG_PREFIX)
-bb_MAKE=$(bb_DEF_MAKE) KBUILD_OUTPUT=$(bb_BUILDDIR) \
-  -C $(bb_BUILDDIR)
+bb_BUILDDIR=$(BUILDDIR)/busybox-$(APP_PLATFORM)
+bb_DEF_MAKE=$(MAKE) CROSS_COMPILE=$(CROSS_COMPILE) CONFIG_PREFIX=$(CONFIG_PREFIX)
+bb_MAKE=$(bb_DEF_MAKE) KBUILD_OUTPUT=$(bb_BUILDDIR) -C $(bb_BUILDDIR)
 
 bb_mrproper bb_help:
 	$(bb_DEF_MAKE) -C $(bb_DIR) $(@:bb_%=%)
@@ -333,12 +345,11 @@ bb_doc: | $(bb_BUILDDIR)/.config
 ifeq ("$(NB)","")
 	$(bb_MAKE) doc
 endif
-	tar -Jcvf $(BUILDDIR)/busybox-docs.tar.xz \
-	  --show-transformed-names \
-	  --transform="s/docs/busybox-docs/" \
-	  -C $(bb_BUILDDIR) docs
+	tar -Jcvf $(BUILDDIR)/busybox-docs.tar.xz --show-transformed-names \
+	  --transform="s/docs/busybox-docs/" -C $(bb_BUILDDIR) \
+	  docs
 
-bb_install: CONFIG_PREFIX=$(BUILDDIR)/sysroot
+bb_install: CONFIG_PREFIX=$(BUILD_SYSROOT)
 
 bb: $(bb_BUILDDIR)/.config
 	$(bb_MAKE)
@@ -348,8 +359,8 @@ bb_%: $(bb_BUILDDIR)/.config
 
 #------------------------------------
 #
-libasound_DIR=$(PROJDIR)/package/libasound
-libasound_BUILDDIR=$(BUILDDIR)/libasound
+libasound_DIR=$(PROJDIR)/package/alsa-lib
+libasound_BUILDDIR=$(BUILDDIR)/libasound-$(APP_PLATFORM)
 libasound_MAKE=$(MAKE) DESTDIR=$(DESTDIR) -C $(libasound_BUILDDIR)
 
 libasound_configure $(libasound_BUILDDIR)/Makefile:
@@ -358,7 +369,7 @@ libasound_configure $(libasound_BUILDDIR)/Makefile:
 	  $(libasound_DIR)/configure --host=`$(CC) -dumpmachine` --prefix= \
 	    --disable-topology
 
-libasound_install: DESTDIR=$(BUILDDIR)/sysroot
+libasound_install: DESTDIR=$(BUILD_SYSROOT)
 
 libasound: $(libasound_BUILDDIR)/Makefile
 	$(libasound_MAKE)
@@ -369,7 +380,7 @@ libasound_%: $(libasound_BUILDDIR)/Makefile
 #------------------------------------
 #
 zlib_DIR=$(PROJDIR)/package/zlib
-zlib_BUILDDIR=$(BUILDDIR)/zlib
+zlib_BUILDDIR=$(BUILDDIR)/zlib-$(APP_PLATFORM)
 zlib_MAKE=$(MAKE) DESTDIR=$(DESTDIR) -C $(zlib_BUILDDIR)
 
 zlib_configure $(zlib_BUILDDIR)/configure.log:
@@ -381,7 +392,7 @@ zlib_configure $(zlib_BUILDDIR)/configure.log:
 zlib_distclean:
 	$(RM) $(zlib_BUILDDIR)
 
-zlib_install: DESTDIR=$(BUILDDIR)/sysroot
+zlib_install: DESTDIR=$(BUILD_SYSROOT)
 
 zlib: $(zlib_BUILDDIR)/configure.log
 	$(zlib_MAKE)
@@ -391,47 +402,104 @@ zlib_%: $(zlib_BUILDDIR)/configure.log
 
 #------------------------------------
 #
+fdkaac_DIR=$(PROJDIR)/package/fdk-aac
+fdkaac_BUILDDIR=$(BUILDDIR)/fdkaac-$(APP_PLATFORM)
+fdkaac_MAKE=$(MAKE) DESTDIR=$(DESTDIR) -C $(fdkaac_BUILDDIR)
+
+fdkaac_defconfig $(fdkaac_BUILDDIR)/Makefile:
+	[ -d "$(fdkaac_BUILDDIR)" ] || $(MKDIR) $(fdkaac_BUILDDIR)
+	cd $(fdkaac_BUILDDIR) && \
+	  $(fdkaac_DIR)/configure --host=`$(CC) -dumpmachine` --prefix=
+
+fdkaac_install: DESTDIR=$(BUILD_SYSROOT)
+
+fdkaac: $(fdkaac_BUILDDIR)/Makefile
+	$(fdkaac_MAKE)
+
+fdkaac_%: $(fdkaac_BUILDDIR)/Makefile
+	$(fdkaac_MAKE) $(@:fdkaac_%=%)
+
+#------------------------------------
+#
+faad2_DIR=$(PROJDIR)/package/faad2
+faad2_BUILDDIR=$(BUILDDIR)/faad2-$(APP_PLATFORM)
+faad2_MAKE=$(MAKE) DESTDIR=$(DESTDIR) -C $(faad2_BUILDDIR)
+
+faad2_defconfig $(faad2_BUILDDIR)/Makefile:
+	[ -d "$(faad2_BUILDDIR)" ] || $(MKDIR) $(faad2_BUILDDIR)
+	cd $(faad2_BUILDDIR) && \
+	  $(BUILD_PKGCFG_ENV) $(faad2_DIR)/configure --host=`$(CC) -dumpmachine` \
+	    --prefix=
+
+faad2_install: DESTDIR=$(BUILD_SYSROOT)
+
+faad2: $(faad2_BUILDDIR)/Makefile
+	$(faad2_MAKE)
+
+faad2_%: $(faad2_BUILDDIR)/Makefile
+	$(faad2_MAKE) $(@:faad2_%=%)
+
+#------------------------------------
+#
 ncursesw_DIR=$(PROJDIR)/package/ncurses
-ncursesw_BUILDDIR=$(BUILDDIR)/ncursesw
+ncursesw_BUILDDIR=$(BUILDDIR)/ncursesw-$(APP_PLATFORM)
 ncursesw_TINFODIR=/usr/share/terminfo
-ncursesw_TINFO=ansi,ansi-m,color_xterm,linux,pcansi-m,rxvt-basic,vt52,vt100,vt102,vt220,xterm,tmux-256color
+
+# refine to comma saperated list to exec
+ncursesw_TINFO=ansi,ansi-m,color_xterm,linux,pcansi-m,rxvt-basic,vt52,vt100 \
+  vt102,vt220,xterm,screen,tmux-256color,screen-256color,xterm-256color
+ncursesw_TINFO2=$(subst $(SPACE),$(COMMA),$(sort $(subst $(COMMA),$(SPACE), \
+  $(ncursesw_TINFO))))
+
 ncursesw_DEF_CFG=$(ncursesw_DIR)/configure --prefix= --with-shared \
-  --with-termlib --with-ticlib --enable-widec --disable-db-install
+  --with-termlib --with-ticlib --enable-widec --enable-pc-files \
+  --with-default-terminfo-dir=$(ncursesw_TINFODIR)
 ncursesw_MAKE=$(MAKE) DESTDIR=$(DESTDIR) -C $(ncursesw_BUILDDIR)
 
 ncursesw_host_install: DESTDIR=$(PROJDIR)/tool
-ncursesw_host_install: ncursesw_BUILDDIR=$(BUILDDIR)/ncursesw/host
+ncursesw_host_install: ncursesw_BUILDDIR=$(BUILDDIR)/ncursesw-host
 ncursesw_host_install:
 	[ -d "$(ncursesw_BUILDDIR)" ] || $(MKDIR) $(ncursesw_BUILDDIR)
 	cd $(ncursesw_BUILDDIR) && $(ncursesw_DEF_CFG)
 	$(ncursesw_MAKE) install
-	echo "INPUT(-lncursesw)" > $(DESTDIR)/lib/libncurses.so
-	echo "INPUT(-ltinfow)" > $(DESTDIR)/lib/libtinfo.so
+	echo "INPUT(-lncursesw)" > $(DESTDIR)/lib/libcurses.so;
+	for i in ncurses form panel menu tinfo; do \
+	  echo "INPUT(-l$${i}w)" > $(DESTDIR)/lib/lib$${i}.so; \
+	done
 
-ncursesw_configure $(ncursesw_BUILDDIR)/Makefile:
-	# [ -x $(PROJDIR)/tool/bin/tic ] || $(MAKE) ncursesw_host_install
-	[ -d "$(ncursesw_BUILDDIR)" ] || $(MKDIR) $(ncursesw_BUILDDIR)
+ncursesw_defconfig $(ncursesw_BUILDDIR)/Makefile:
+	[ -d $(ncursesw_BUILDDIR) ] || $(MKDIR) $(ncursesw_BUILDDIR)
 	cd $(ncursesw_BUILDDIR) && \
 	  $(ncursesw_DEF_CFG) --host=`$(CC) -dumpmachine` \
-	  --with-default-terminfo-dir=$(ncursesw_TINFODIR) \
-	  --without-tests --disable-stripping --without-manpages
+	  --disable-db-install --without-tests --disable-stripping \
+	  --without-manpages
 
 ncursesw_distclean:
 	$(RM) $(ncursesw_BUILDDIR)
 
-ncursesw_install: DESTDIR=$(BUILDDIR)/sysroot
+ncursesw_install: DESTDIR=$(BUILD_SYSROOT)
 ncursesw_install: $(ncursesw_BUILDDIR)/Makefile
 	$(ncursesw_MAKE) install
-	if [ -x $(PROJDIR)/tool/bin/tic ]; then \
-	  ( [ -d "$(DESTDIR)/$(ncursesw_TINFODIR)" ] || \
+	echo "INPUT(-lncursesw)" > $(DESTDIR)/lib/libcurses.so;
+	for i in ncurses form panel menu tinfo; do \
+	  echo "INPUT(-l$${i}w)" > $(DESTDIR)/lib/lib$${i}.so; \
+	done
+	$(MAKE) DESTDIR=$(DESTDIR) ncursesw_terminfo_install
+
+# opt dep: [ -x $(PROJDIR)/tool/bin/tic ] || $(MAKE) ncursesw_host_install
+ncursesw_terminfo_install: DESTDIR=$(BUILD_SYSROOT)
+ncursesw_terminfo_install:
+	if [ -x "$(PROJDIR)/tool/bin/tic" ]; then \
+	  ( [ -d $(DESTDIR)/$(ncursesw_TINFODIR) ] || \
 	    $(MKDIR) $(DESTDIR)/$(ncursesw_TINFODIR) ) && \
-	  LD_LIBRARY_PATH=$(PROJDIR)/tool/lib tic -s -1 -I -e'$(ncursesw_TINFO)' \
-	    $(ncursesw_DIR)/misc/terminfo.src > $(BUILDDIR)/terminfo.src; \
-	  LD_LIBRARY_PATH=$(PROJDIR)/tool/lib tic -s -o $(ncursesw_TINFODIR) \
-	    $(BUILDDIR)/terminfo.src; \
+	  LD_LIBRARY_PATH=$(PROJDIR)/tool/lib \
+	    TERMINFO=$(PROJDIR)/tool/$(ncursesw_TINFODIR) tic -s -1 -I \
+		-e'$(ncursesw_TINFO2)' $(ncursesw_DIR)/misc/terminfo.src \
+		> $(BUILDDIR)/terminfo.src; \
+	  LD_LIBRARY_PATH=$(PROJDIR)/tool/lib \
+	    TERMINFO=$(PROJDIR)/tool/$(ncursesw_TINFODIR) tic -s \
+	    -o $(DESTDIR)/$(ncursesw_TINFODIR) $(BUILDDIR)/terminfo.src; \
 	fi
-	echo "INPUT(-lncursesw)" > $(DESTDIR)/lib/libncurses.so
-	echo "INPUT(-ltinfow)" > $(DESTDIR)/lib/libtinfo.so
 
 ncursesw: $(ncursesw_BUILDDIR)/Makefile
 	$(ncursesw_MAKE)
@@ -440,104 +508,62 @@ ncursesw_%: $(ncursesw_BUILDDIR)/Makefile
 	$(ncursesw_MAKE) $(@:ncursesw_%=%)
 
 #------------------------------------
-# dep: make libasound_install ncursesw_install
 #
-alsautil_DIR=$(PROJDIR)/package/alsa-utils
-alsautil_BUILDDIR=$(BUILDDIR)/alsa-utils
-alsautil_MAKE=$(MAKE) DESTDIR=$(DESTDIR) -C $(alsautil_BUILDDIR)
-alsautil_INCDIR=$(BUILDDIR)/sysroot/include $(BUILDDIR)/sysroot/include/ncursesw
-alsautil_LIBDIR=$(BUILDDIR)/sysroot/lib
-alsautil_DEP=libasound ncursesw
+libmnl_DIR=$(PROJDIR)/package/libmnl
+libmnl_BUILDDIR=$(BUILDDIR)/libmnl-$(APP_PLATFORM)
+libmnl_MAKE=$(MAKE) DESTDIR=$(DESTDIR) -C $(libmnl_BUILDDIR)
 
-alsautil_configure $(alsautil_BUILDDIR)/Makefile:
-	[ -d "$(alsautil_BUILDDIR)" ] || $(MKDIR) $(alsautil_BUILDDIR)
-	cd $(alsautil_BUILDDIR) && \
-	  CPPFLAGS="$(addprefix -I,$(alsautil_INCDIR))" \
-	  LDFLAGS="$(addprefix -L,$(alsautil_LIBDIR))" \
-	  $(alsautil_DIR)/configure --host=`$(CC) -dumpmachine` --prefix= \
-	    --disable-alsatest
+libmnl_defconfig $(libmnl_BUILDDIR)/Makefile:
+	[ -d "$(libmnl_BUILDDIR)" ] || $(MKDIR) $(libmnl_BUILDDIR)
+	cd $(libmnl_BUILDDIR) && \
+	  $(BUILD_PKGCFG_ENV) $(libmnl_DIR)/configure --host=`$(CC) -dumpmachine` \
+	    --prefix=
 
-alsautil_install: DESTDIR=$(BUILDDIR)/sysroot
+libmnl_install: DESTDIR=$(BUILD_SYSROOT)
 
-alsautil: $(alsautil_BUILDDIR)/Makefile
-	$(alsautil_MAKE)
+libmnl: $(libmnl_BUILDDIR)/Makefile
+	$(libmnl_MAKE)
 
-alsautil_%: $(alsautil_BUILDDIR)/Makefile
-	$(alsautil_MAKE) $(@:alsautil_%=%)
+libmnl_%: $(libmnl_BUILDDIR)/Makefile
+	$(libmnl_MAKE) $(@:libmnl_%=%)
 
 #------------------------------------
 #
-sdl_DIR=$(PROJDIR)/package/SDL2-2.0.14
-sdl_BUILDDIR=$(BUILDDIR)/sdl
-sdl_MAKE=$(MAKE) DESTDIR=$(DESTDIR) -C $(sdl_BUILDDIR)
+ethtool_DIR=$(PROJDIR)/package/ethtool
+ethtool_BUILDDIR=$(BUILDDIR)/ethtool-$(APP_PLATFORM)
+ethtool_MAKE=$(MAKE) DESTDIR=$(DESTDIR) -C $(ethtool_BUILDDIR)
+ethtool_INCDIR=$(BUILD_SYSROOT)/include $(BUILD_SYSROOT)/include/ncursesw
+ethtool_LIBDIR=$(BUILD_SYSROOT)/lib $(BUILD_SYSROOT)/lib64
 
-sdl_configure:
-	[ -d "$(sdl_BUILDDIR)" ] || $(MKDIR) $(sdl_BUILDDIR)
-	cd $(sdl_BUILDDIR) && \
-	  $(sdl_DIR)/configure --host=`$(CC) -dumpmachine` --prefix=
+ethtool_defconfig $(ethtool_BUILDDIR)/Makefile:
+	[ -d "$(ethtool_BUILDDIR)" ] || $(MKDIR) $(ethtool_BUILDDIR)
+	cd $(ethtool_BUILDDIR) && \
+	  $(BUILD_PKGCFG_ENV) $(ethtool_DIR)/configure --host=`$(CC) -dumpmachine` \
+	    --prefix= CPPFLAGS="$(addprefix -I,$(ethtool_INCDIR))" \
+		LDFLAGS="$(addprefix -L,$(ethtool_LIBDIR)) -lmnl"
 
-sdl_install: DESTDIR=$(BUILDDIR)/sysroot
+ethtool_install: DESTDIR=$(BUILD_SYSROOT)
 
-sdl: $(sdl_BUILDDIR)/Makefile
-	$(sdl_MAKE)
+ethtool: $(ethtool_BUILDDIR)/Makefile
+	$(ethtool_MAKE)
 
-sdl_%: $(sdl_BUILDDIR)/Makefile
-	$(sdl_MAKE) $(@:sdl_%=%)
-
-#------------------------------------
-# dep: zlib libasound_install ncursesw_install
-#
-ff_DIR=$(PROJDIR)/package/ffmpeg
-ff_BUILDDIR=$(BUILDDIR)/ffmpeg
-ff_INCDIR=$(BUILDDIR)/sysroot/include $(BUILDDIR)/sysroot/include/ncursesw \
-  $(BUILDDIR)/sysroot/include/SDL2
-ff_LIBDIR=$(BUILDDIR)/sysroot/lib
-ff_MAKE=$(MAKE) DESTDIR=$(DESTDIR) -C $(ff_BUILDDIR)
-ff_DEP=zlib libasound ncursesw
-ifneq ("$(strip $(filter bpi,$(APP_ATTR)))","")
-ff_LIBDIR+=$(BUILDDIR)/sysroot/lib64
-ff_CFGPARAM+=--arch=aarch64
-else
-ff_CFGPARAM+=--arch=arm --cpu=cortex-a5 --enable-vfpv3
-endif
-
-ff_configure $(ff_BUILDDIR)/Makefile:
-	[ -d "$(ff_BUILDDIR)" ] || $(MKDIR) $(ff_BUILDDIR)
-	cd $(ff_BUILDDIR) && PKG_CONFIG_PATH="$(BUILDDIR)/sysroot/lib/pkgconfig" \
-	  $(ff_DIR)/configure --enable-cross-compile --target-os=linux \
-	    --cross_prefix=$(CROSS_COMPILE) --prefix=/ $(ff_CFGPARAM) \
-		--disable-iconv --enable-pic --enable-shared \
-	    --enable-hardcoded-tables --enable-pthreads \
-		--enable-ffplay \
-	    --extra-cflags="$(addprefix -I,$(ff_INCDIR)) -D_REENTRANT" \
-	    --extra-ldflags="$(addprefix -L,$(ff_LIBDIR))"
-
-ff_install: DESTDIR=$(BUILDDIR)/sysroot
-
-ff: $(ff_BUILDDIR)/Makefile
-	$(ff_MAKE)
-
-ff_%: $(ff_BUILDDIR)/Makefile
-	$(ff_MAKE) $(@:ff_%=%)
+ethtool_%: $(ethtool_BUILDDIR)/Makefile
+	$(ethtool_MAKE) $(@:ethtool_%=%)
 
 #------------------------------------
 #
 openssl_DIR=$(PROJDIR)/package/openssl
-openssl_BUILDDIR=$(BUILDDIR)/openssl
+openssl_BUILDDIR=$(BUILDDIR)/openssl-$(APP_PLATFORM)
 openssl_MAKE=$(MAKE) DESTDIR=$(DESTDIR) -C $(openssl_BUILDDIR)
 
 openssl_defconfig $(openssl_BUILDDIR)/configdata.pm:
-	# if [ ! -d $(openssl_BUILDDIR) ]; then \
-	#   $(MKDIR) $(openssl_BUILDDIR) && \
-	#     $(CP) $(openssl_DIR)/* $(openssl_BUILDDIR)/; \
-	# fi
 	[ -d $(openssl_BUILDDIR) ] || $(MKDIR) $(openssl_BUILDDIR)
 	cd $(openssl_BUILDDIR) && \
 	  $(openssl_DIR)/Configure linux-generic64 --cross-compile-prefix=$(CROSS_COMPILE) \
 	    --prefix=/ --openssldir=/lib/ssl no-tests \
-		-L$(BUILDDIR)/sysroot/lib -I$(BUILDDIR)/sysroot/include
+		-L$(BUILD_SYSROOT)/lib -I$(BUILD_SYSROOT)/include
 
-openssl_install: DESTDIR=$(BUILDDIR)/sysroot
+openssl_install: DESTDIR=$(BUILD_SYSROOT)
 openssl_install: $(openssl_BUILDDIR)/configdata.pm
 	$(openssl_MAKE) install_sw install_ssldirs
 
@@ -549,16 +575,94 @@ openssl_%: $(openssl_BUILDDIR)/configdata.pm
 
 #------------------------------------
 #
+libevent_DIR=$(PROJDIR)/package/libevent
+libevent_BUILDDIR=$(BUILDDIR)/libevent-$(APP_PLATFORM)
+libevent_MAKE=$(MAKE) DESTDIR=$(DESTDIR) -C $(libevent_BUILDDIR)
+
+libevent_defconfig $(libevent_BUILDDIR)/Makefile:
+	[ -d "$(libevent_BUILDDIR)" ] || $(MKDIR) $(libevent_BUILDDIR)
+	cd $(libevent_BUILDDIR) && \
+	  $(libevent_DIR)/configure --host=`$(CC) -dumpmachine` --prefix= \
+	  --disable-openssl
+
+libevent_install: DESTDIR=$(BUILD_SYSROOT)
+
+libevent: $(libevent_BUILDDIR)/Makefile
+	$(libevent_MAKE)
+
+libevent_%: $(libevent_BUILDDIR)/Makefile
+	$(libevent_MAKE) $(@:libevent_%=%)
+
+#------------------------------------
+#
+tmux_DIR=$(PROJDIR)/package/tmux-3.2a
+tmux_BUILDDIR=$(BUILDDIR)/tmux-$(APP_PLATFORM)
+tmux_MAKE=$(MAKE) DESTDIR=$(DESTDIR) -C $(tmux_BUILDDIR)
+tmux_INCDIR=$(BUILD_SYSROOT)/include $(BUILD_SYSROOT)/include/ncursesw
+tmux_LIBDIR=$(BUILD_SYSROOT)/lib $(BUILD_SYSROOT)/lib64
+
+tmux_defconfig $(tmux_BUILDDIR)/Makefile:
+	[ -d "$(tmux_BUILDDIR)" ] || $(MKDIR) $(tmux_BUILDDIR)
+	cd $(tmux_BUILDDIR) && \
+	  $(BUILD_PKGCFG_ENV) $(tmux_DIR)/configure --host=`$(CC) -dumpmachine` \
+	  --prefix= LDFLAGS="$(addprefix -L,$(tmux_LIBDIR))" \
+	  CFLAGS="$(addprefix -I,$(tmux_INCDIR))"
+
+tmux_install: DESTDIR=$(BUILD_SYSROOT)
+
+tmux: $(tmux_BUILDDIR)/Makefile
+	$(tmux_MAKE)
+
+tmux_%: $(tmux_BUILDDIR)/Makefile
+	$(tmux_MAKE) $(@:tmux_%=%)
+
+#------------------------------------
+# dep: make libasound_install ncursesw_install
+#
+alsautils_DIR=$(PROJDIR)/package/alsa-utils
+alsautils_BUILDDIR=$(BUILDDIR)/alsautils-$(APP_PLATFORM)
+alsautils_MAKE=$(MAKE) DESTDIR=$(DESTDIR) -C $(alsautils_BUILDDIR)
+alsautils_INCDIR=$(BUILD_SYSROOT)/include $(BUILD_SYSROOT)/include/ncursesw
+alsautils_LIBDIR=$(BUILD_SYSROOT)/lib $(BUILD_SYSROOT)/lib64
+
+alsautils_defconfig $(alsautils_BUILDDIR)/Makefile:
+	[ -d "$(alsautils_BUILDDIR)" ] || $(MKDIR) $(alsautils_BUILDDIR)
+	cd $(alsautils_BUILDDIR) && \
+	  CPPFLAGS="$(addprefix -I,$(alsautils_INCDIR))" \
+	  LDFLAGS="$(addprefix -L,$(alsautils_LIBDIR))" \
+	  $(alsautils_DIR)/configure --host=`$(CC) -dumpmachine` --prefix= \
+	    --disable-alsatest
+
+alsautils_install: DESTDIR=$(BUILD_SYSROOT)
+
+alsautil: $(alsautils_BUILDDIR)/Makefile
+	$(alsautils_MAKE)
+
+alsautils_%: $(alsautils_BUILDDIR)/Makefile
+	$(alsautils_MAKE) $(@:alsautils_%=%)
+
+#------------------------------------
+#
+libnl_BUILD_INTREE=1
 libnl_DIR=$(PROJDIR)/package/libnl
-libnl_BUILDDIR=$(BUILDDIR)/libnl
+libnl_BUILDDIR=$(BUILDDIR)/libnl-$(APP_PLATFORM)
 libnl_MAKE=$(MAKE) DESTDIR=$(DESTDIR) -C $(libnl_BUILDDIR)
 
 libnl_defconfig $(libnl_BUILDDIR)/Makefile:
+ifneq ("$(libnl_BUILD_INTREE)","")
+	[ -d "$(libnl_BUILDDIR)" ] || git clone $(libnl_DIR) $(libnl_BUILDDIR)
+	[ -x $(libnl_BUILDDIR)/configure ] || { \
+	  cd $(libnl_BUILDDIR) && ./autogen.sh; \
+	}
+	cd $(libnl_BUILDDIR) && \
+	  ./configure --host=`$(CC) -dumpmachine` --prefix=
+else
 	[ -d "$(libnl_BUILDDIR)" ] || $(MKDIR) $(libnl_BUILDDIR)
 	cd $(libnl_BUILDDIR) && \
 	  $(libnl_DIR)/configure --host=`$(CC) -dumpmachine` --prefix=
+endif
 
-libnl_install: DESTDIR=$(BUILDDIR)/sysroot
+libnl_install: DESTDIR=$(BUILD_SYSROOT)
 
 libnl: $(libnl_BUILDDIR)/Makefile
 	$(libnl_MAKE)
@@ -567,12 +671,92 @@ libnl_%: $(libnl_BUILDDIR)/Makefile
 	$(libnl_MAKE) $(@:libnl_%=%)
 
 #------------------------------------
+# dep: zlib libasound_install ncursesw_install
+#
+ff_DIR=$(PROJDIR)/package/ffmpeg
+ff_BUILDDIR=$(BUILDDIR)/ffmpeg-$(APP_PLATFORM)
+ff_INCDIR=$(BUILD_SYSROOT)/include $(BUILD_SYSROOT)/include/ncursesw
+ff_LIBDIR+=$(BUILD_SYSROOT)/lib64 $(BUILD_SYSROOT)/usr/lib64 \
+  $(BUILD_SYSROOT)/lib $(BUILD_SYSROOT)/usr/lib
+ifneq ("$(strip $(filter bpi,$(APP_ATTR)))","")
+ff_CFGPARAM+=--arch=aarch64
+else ifneq ("$(strip $(filter xm,$(APP_ATTR)))","")
+ff_CFGPARAM+=--arch=arm --cpu=cortex-a5 --enable-vfpv3
+else 
+ff_CFGPARAM+=--enable-debug=
+endif
+ff_MAKE=$(MAKE) DESTDIR=$(DESTDIR) -C $(ff_BUILDDIR)
+
+ff_configure $(ff_BUILDDIR)/Makefile:
+	[ -d "$(ff_BUILDDIR)" ] || $(MKDIR) $(ff_BUILDDIR)
+	cd $(ff_BUILDDIR) && \
+	  $(BUILD_PKGCFG_ENV) LD_LIBRARY_PATH=$(PROJDIR)/tool/lib \
+	    $(ff_DIR)/configure --target-os=linux \
+	    --cross_prefix=$(CROSS_COMPILE) --enable-cross-compile $(ff_CFGPARAM) \
+		--prefix=/ --disable-iconv --enable-pic --enable-shared \
+	    --enable-hardcoded-tables --enable-pthreads --enable-ffplay \
+	    --extra-cflags="$(addprefix -I,$(ff_INCDIR)) -D_REENTRANT" \
+	    --extra-ldflags="$(addprefix -L,$(ff_LIBDIR))"
+
+ff_defconfig $(ff_BUILDDIR)/config.h:
+	$(MAKE) $(APP_PLATFORM)_ff_defconfig
+
+ff_install: DESTDIR=$(BUILD_SYSROOT)
+
+ff_dist_install: DESTDIR=$(BUILD_SYSROOT)
+ff_dist_install:
+	if [ ! -e "$(ff_BUILDDIR)/config.h" -o \
+	    ! -e "$(ff_BUILDDIR)/$(APP_PLATFORM)_dist.tar" -o \
+		! -e "$(ff_BUILDDIR)/$(APP_PLATFORM)_dist.md5sum" ] || \
+	    ! md5sum "$(ff_BUILDDIR)/$(APP_PLATFORM)_dist.md5sum"; then \
+	  $(MAKE) DESTDIR=$(ff_BUILDDIR)/$(APP_PLATFORM)_dist ff_install; \
+	  tar -cvf $(ff_BUILDDIR)/$(APP_PLATFORM)_dist.tar -C $(ff_BUILDDIR) \
+	    $(APP_PLATFORM)_dist; \
+	  md5sum $(ff_BUILDDIR)/config.h \
+	    > $(ff_BUILDDIR)/$(APP_PLATFORM)_dist.md5sum; \
+	  $(RM) $(ff_BUILDDIR)/$(APP_PLATFORM)_dist; \
+	fi
+	[ -d "$(DESTDIR)" ] || $(MKDIR) $(DESTDIR)
+	tar -xvf $(ff_BUILDDIR)/$(APP_PLATFORM)_dist.tar \
+	  --strip-components=1 -C $(DESTDIR)
+
+ff: $(ff_BUILDDIR)/Makefile
+	$(ff_MAKE)
+
+ff_%: $(ff_BUILDDIR)/Makefile
+	$(ff_MAKE) $(@:ff_%=%)
+
+#------------------------------------
+#
+iw_DIR=$(PROJDIR)/package/iw
+iw_BUILDDIR=$(BUILDDIR)/iw-$(APP_PLATFORM)
+# iw_INCDIR=$(BUILD_SYSROOT)/include $(BUILD_SYSROOT)/include/libnl3
+iw_LIBDIR=$(BUILD_SYSROOT)/lib
+
+iw_MAKE=PKG_CONFIG_LIBDIR="$(BUILD_SYSROOT)/lib/pkgconfig" \
+  PKG_CONFIG_SYSROOT_DIR="$(BUILD_SYSROOT)" \
+  PREFIX=/ DESTDIR=$(DESTDIR) CC=$(CC) LDFLAGS="$(addprefix -L,$(iw_LIBDIR))" \
+  $(MAKE) -C $(iw_BUILDDIR)
+
+iw_defconfig $(iw_BUILDDIR)/Makefile:
+	[ -d $(iw_BUILDDIR) ] || $(MKDIR) $(iw_BUILDDIR)
+	$(CP) $(iw_DIR)/* $(iw_BUILDDIR)/
+
+iw_install: DESTDIR=$(BUILD_SYSROOT)
+
+iw: | $(iw_BUILDDIR)/Makefile
+	$(iw_MAKE)
+
+iw_%: | $(iw_BUILDDIR)/Makefile
+	$(iw_MAKE) $(@:iw_%=%)
+
+#------------------------------------
 # dep: openssl, libnl, linux_headers
 #
 wpasup_DIR=$(PROJDIR)/package/wpa_supplicant
-wpasup_BUILDDIR=$(BUILDDIR)/wpasup
-wpasup_MAKE=$(MAKE) CC=$(CC) LIBNL_INC="$(BUILDDIR)/sysroot/include/libnl3" \
-  EXTRA_CFLAGS="-I$(BUILDDIR)/sysroot/include" LDFLAGS="-L$(BUILDDIR)/sysroot/lib" \
+wpasup_BUILDDIR=$(BUILDDIR)/wpasup-$(APP_PLATFORM)
+wpasup_MAKE=$(MAKE) CC=$(CC) LIBNL_INC="$(BUILD_SYSROOT)/include/libnl3" \
+  EXTRA_CFLAGS="-I$(BUILD_SYSROOT)/include" LDFLAGS="-L$(BUILD_SYSROOT)/lib" \
   DESTDIR=$(DESTDIR) LIBDIR=/lib BINDIR=/sbin INCDIR=/include \
   -C $(wpasup_BUILDDIR)/wpa_supplicant
 
@@ -589,7 +773,7 @@ wpasup_defconfig $(wpasup_BUILDDIR)/wpa_supplicant/.config:
 	    $(wpasup_BUILDDIR)/wpa_supplicant/.config; \
 	fi
 
-wpasup_install: DESTDIR=$(BUILDDIR)/sysroot
+wpasup_install: DESTDIR=$(BUILD_SYSROOT)
 
 wpasup: $(wpasup_BUILDDIR)/wpa_supplicant/.config
 	$(wpasup_MAKE)
@@ -600,19 +784,82 @@ wpasup_%: $(wpasup_BUILDDIR)/wpa_supplicant/.config
 #------------------------------------
 #
 mdns_DIR=$(PROJDIR)/package/mDNSResponder
-mdns_BUILDDIR=$(BUILDDIR)/mdns
-mdns_MAKE=$(MAKE) CC=$(CC) LD=$(LD) ST=$(STRIP) CFLAGS_PTHREAD=-pthread \
-  LINKOPTS_PTHREAD=-pthread -C $(mdns_BUILDDIR)/mDNSPosix
+mdns_BUILDDIR=$(BUILDDIR)/mdns-$(APP_PLATFORM)
+mdns_CPPFLAGS_EXTRA+=-lgcc_s -Wno-expansion-to-defined -Wno-stringop-truncation \
+  -Wno-address-of-packed-member -Wno-enum-conversion
 
-mdns_defconfig $(mdns_BUILDDIR)/Makefile:
+# match airplay makefile
+mdns_BUILDDIR2=build/destdir
+
+mdns_MAKE=$(MAKE) os=linux CC=$(CC) LD=$(LD) ST=$(STRIP) \
+  CFLAGS_PTHREAD=-pthread LINKOPTS_PTHREAD=-pthread \
+  BUILDDIR=$(mdns_BUILDDIR2) OBJDIR=build \
+  CPPFLAGS_EXTRA+="$(mdns_CPPFLAGS_EXTRA)" \
+  INSTBASE=$(INSTBASE) -C $(mdns_BUILDDIR)/mDNSPosix
+
+mdns_defconfig $(mdns_BUILDDIR)/mDNSPosix/Makefile:
 	[ -d $(mdns_BUILDDIR) ] || $(MKDIR) $(mdns_BUILDDIR)
-	$(CP) $(mdns_DIR)/* $(mdns_BUILDDIR)/
+	$(CP) $(mdns_DIR)/* $(mdns_BUILDDIR)
 
-mdns: | $(mdns_BUILDDIR)/Makefile
+# dep: mdns
+mdns_install: INSTBASE=$(BUILD_SYSROOT)
+mdns_install: mdns | $(mdns_BUILDDIR)/mDNSPosix/Makefile
+	$(mdns_MAKE) InstalledLib InstalledClients
+	[ -d $(INSTBASE)/sbin ] || $(MKDIR) $(INSTBASE)/sbin
+	$(CP) $(mdns_BUILDDIR)/mDNSPosix/$(mdns_BUILDDIR2)/mdnsd \
+	  $(INSTBASE)/sbin/
+	[ -d $(INSTBASE)/bin ] || $(MKDIR) $(INSTBASE)/bin
+	$(CP) $(mdns_BUILDDIR)/mDNSPosix/$(mdns_BUILDDIR2)/mDNSClientPosix \
+	  $(mdns_BUILDDIR)/mDNSPosix/$(mdns_BUILDDIR2)/mDNSNetMonitor \
+	  $(mdns_BUILDDIR)/mDNSPosix/$(mdns_BUILDDIR2)/mDNSResponderPosix \
+	  $(INSTBASE)/bin/
+	[ -d $(INSTBASE)/share/man/man8 ] || $(MKDIR) $(INSTBASE)/share/man/man8
+	$(CP) $(mdns_BUILDDIR)/mDNSShared/mDNSResponder.8 \
+	  $(INSTBASE)/share/man/man8/mdnsd.8
+	[ -d $(INSTBASE)/share/man/man1 ] || $(MKDIR) $(INSTBASE)/share/man/man1
+	$(CP) $(mdns_BUILDDIR)/mDNSShared/dns-sd.1 \
+	  $(INSTBASE)/share/man/man1
+
+mdns $(mdns_BUILDDIR)/mDNSPosix/$(mdns_BUILDDIR2)/mdnsd: | $(mdns_BUILDDIR)/mDNSPosix/Makefile
 	$(mdns_MAKE)
 
-mdns_%: | $(mdns_BUILDDIR)/Makefile
+mdns_%: | $(mdns_BUILDDIR)/mDNSPosix/Makefile
 	$(mdns_MAKE) $(@:mdns_%=%)
+
+#------------------------------------
+#
+homekit_DIR=$(PROJDIR)/package/HomeKitADK
+homekit_BUILDDIR=$(BUILDDIR)/homekit-$(APP_PLATFORM)
+homekit_MAKE=$(MAKE) TARGET=Linux -C $(homekit_BUILDDIR)
+
+homekit_defconfig $(homekit_BUILDDIR)/Makefile:
+	[ -d "$(homekit_BUILDDIR)" ] || $(MKDIR) $(homekit_BUILDDIR)
+	$(CP) $(homekit_DIR)/* $(homekit_BUILDDIR)/
+
+homekit: $(homekit_BUILDDIR)/Makefile
+	$(homekit_MAKE)
+
+homekit_%: $(homekit_BUILDDIR)/Makefile
+	$(homekit_MAKE) $(@:homekit_%=%)
+
+#------------------------------------
+#
+fftest1_dir=$(PROJDIR)/package/fftest1
+fftest1_BUILDDIR=$(BUILDDIR)/fftest1
+fftest1_LIBS+=z m
+fftest1_SO+=avutil swresample avcodec avformat
+
+fftest1: APP_ATTR=$(APP_ATTR_ub20)
+fftest1:
+	[ -d "$(fftest1_BUILDDIR)" ] || $(MKDIR) $(fftest1_BUILDDIR)
+	gcc -o $(fftest1_BUILDDIR)/$@ -g -I$(BUILD_SYSROOT)/include \
+	  -L$(BUILD_SYSROOT)/lib -pthread -fPIC \
+	  -Wl,--start-group \
+	    -Wl,--push-state,-Bdynamic \
+	      $(addprefix -l,$(fftest1_SO)) \
+	    -Wl,--pop-state \
+	    $(addprefix -l,$(fftest1_LIBS)) $(fftest1_dir)/*.c \
+	  -Wl,--end-group
 
 #------------------------------------
 # dep: ub ub_tools linux_dtbs bb dtc
@@ -632,6 +879,16 @@ dist dist_sd:
 dist_%:
 	$(MAKE) $(APP_PLATFORM)_$@
 
+
+ub20_dist:
+	[ -x $(PROJDIR)/tool/bin/tic ] || $(MAKE) ncursesw_host_install
+	$(MAKE) zlib_install libasound_install
+	$(MAKE) ncursesw_install
+	$(MAKE) libnl_install alsautils_install ff_dist_install openssl_install
+#mdns_install iw_install
+	$(MAKE) wpasup_install fdkaac_install
+
+
 bpi_dist: dist_DTINCDIR+=$(linux_DIR)/arch/arm64/boot/dts/allwinner
 bpi_dist: dist_dts=$(PROJDIR)/sun50i-a64-bananapi-m64.dts
 bpi_dist: dist_dtb=$(linux_BUILDDIR)/arch/arm64/boot/dts/allwinner/sun50i-a64-bananapi-m64.dtb
@@ -639,10 +896,9 @@ bpi_dist: dist_loadaddr=0x40080000 # 0x40200000
 bpi_dist: dist_compaddr=0x44000000
 bpi_dist: dist_compsize=0xb000000
 bpi_dist: dist_fdtaddr=0x4fa00000
-bpi_dist: dist_log={ $(if $(2),echo $(2) >> $(BUILDDIR)/$(1), \
-  echo "" > $(BUILDDIR)/$(1)); }
-bpi_dist: dist_cptar_log=$(call dist_log,cptar_log.txt,$(1))
-bpi_dist: dist_strip_log=$(call dist_log,strip_log.txt,$(1))
+bpi_dist: strip_log=$(BUILDDIR)/strip_log-$(APP_PLATFORM).txt
+bpi_dist: instdest_log=$(BUILDDIR)/instdest_log-$(APP_PLATFORM).txt
+bpi_dist: linux_kernelrelease=$(shell PATH=$(PATH) $(linux_MAKE) -s kernelrelease)
 bpi_dist:
 	[ -x $(PROJDIR)/tool/bin/dtc ] || $(MAKE) dtc_install
 	[ -x $(PROJDIR)/tool/bin/mkimage ] || $(MAKE) ub_tools_install
@@ -652,9 +908,12 @@ ifeq ("$(NB)","")
 	  zlib_install
 	$(MAKE) libasound_install ncursesw_install linux_modules_install \
 	  openssl_install libnl_install
-	$(MAKE) alsautil_install ff_install bb_install wpasup_install
+	$(MAKE) alsautils_install ff_dist_install bb_install wpasup_install \
+	  iw_install libmnl_install ethtool_install
 endif
-	for i in dev proc root sys tmp var/run; do \
+	$(if $(instdest_log),echo "" >> $(instdest_log); date >> $(instdest_log))
+	@echo -e "$(ANSI_GREEN)Install to $(dist_DIR)/boot$(ANSI_NORMAL)"
+	for i in dev proc root mnt sys tmp var/run; do \
 	  [ -d $(dist_DIR)/boot/$$i ] || $(MKDIR) $(dist_DIR)/boot/$$i; \
 	done
 	$(CP) $(ub_BUILDDIR)/u-boot-sunxi-with-spl.bin \
@@ -667,6 +926,7 @@ endif
 	    -o $(dist_DIR)/boot/$(basename $(notdir $(dist_dts))).dtb \
 	    $(BUILDDIR)/$(notdir $(dist_dts)); \
 	fi
+	@echo -e "$(ANSI_GREEN)Create uboot environment image$(ANSI_NORMAL)"
 	echo -n "" > $(BUILDDIR)/uboot.env.txt
 	echo "loadaddr=${dist_loadaddr}" >> $(BUILDDIR)/uboot.env.txt
 	echo "kernel_comp_addr_r=${dist_compaddr}" >> $(BUILDDIR)/uboot.env.txt
@@ -681,75 +941,99 @@ endif
 	echo "bootargs=console=ttyS0,115200n8 rootfstype=ext4,ext2 root=/dev/mmcblk2p2 rw rootwait" >> $(BUILDDIR)/uboot.env.txt
 	echo "bootcmd=run loadkernel; run loadfdt; booti \$${loadaddr} - \$${fdtaddr}" >> $(BUILDDIR)/uboot.env.txt
 	mkenvimage -s 131072 -o $(dist_DIR)/boot/uboot.env $(BUILDDIR)/uboot.env.txt
-	$(call CP_TAR,$(dist_DIR)/rootfs,$(TOOLCHAIN_SYSROOT), \
-	  --exclude="*/gconv" --exclude="*.a" --exclude="*.o" --exclude="*.la", \
-	  lib lib64 sbin usr/lib usr/lib64 usr/bin usr/sbin )
-	$(call CP_TAR,$(dist_DIR)/rootfs,$(BUILDDIR)/sysroot, \
-	  --exclude="bin/amidi" --exclude="share/aclocal" --exclude="share/man" \
-	  --exclude="share/sounds" --exclude="share/doc" \
-	  --exclude="share/ffmpeg/examples" --exclude="share/ffmpeg/*.ffpreset" \
-	  --exclude="share/locale", \
-	  etc bin sbin share usr/bin usr/sbin var linuxrc)
-	$(call CP_TAR,$(dist_DIR)/rootfs,$(BUILDDIR)/sysroot, \
-	  --exclude="*.a" --exclude="*.la" --exclude="*.o", \
-	  lib lib64 usr/lib usr/lib64)
+	@echo -e "$(ANSI_GREEN)Install to $(dist_DIR)/rootfs$(ANSI_NORMAL)"
+# $(call CP_TAR,$(dist_DIR)/rootfs,$(TOOLCHAIN_SYSROOT), \
+#   --exclude="*/gconv" --exclude="*.a" --exclude="*.o" --exclude="*.la", \
+#   lib lib64 sbin usr/lib usr/lib64 usr/bin usr/sbin )
+	cd $(TOOLCHAIN_SYSROOT) && \
+	  rsync -avvR --ignore-missing-args \
+	    --exclude="gconv/" --exclude="*.a" --exclude="*.o" --exclude="*.la" \
+		--exclude="libasan.*" --exclude="libgfortran.*" \
+	    lib lib64 sbin usr/lib usr/lib64 usr/bin usr/sbin \
+		$(dist_DIR)/rootfs/ $(if $(instdest_log),&>> $(instdest_log))
+# $(call CP_TAR,$(dist_DIR)/rootfs,$(BUILD_SYSROOT), \
+# 	--exclude="bin/amidi" --exclude="share/aclocal" --exclude="share/man" \
+# 	--exclude="share/sounds" --exclude="share/doc" \
+# 	--exclude="share/ffmpeg/examples" --exclude="share/ffmpeg/*.ffpreset" \
+# 	--exclude="share/locale", \
+# 	etc bin sbin share usr/bin usr/sbin var linuxrc)
+	cd $(BUILD_SYSROOT) && \
+	  rsync -avvR --ignore-missing-args \
+		--exclude="bin/amidi" --exclude="share/aclocal" --exclude="share/man" \
+		--exclude="share/sounds" --exclude="share/doc" \
+		--exclude="share/ffmpeg/examples" --exclude="share/ffmpeg/*.ffpreset" \
+	    --exclude="share/locale" \
+	    etc bin sbin share usr/bin usr/sbin var linuxrc \
+	    $(dist_DIR)/rootfs/ $(if $(instdest_log),&>> $(instdest_log))
+# $(call CP_TAR,$(dist_DIR)/rootfs,$(BUILD_SYSROOT), \
+#   --exclude="*.a" --exclude="*.la" --exclude="*.o", \
+#   lib lib64 usr/lib usr/lib64)
+	cd $(BUILD_SYSROOT) && \
+	  rsync -avvR --ignore-missing-args \
+	    --exclude="*.a" --exclude="*.la" --exclude="*.o" \
+		lib lib64 usr/lib usr/lib64 \
+	    $(dist_DIR)/rootfs/ $(if $(instdest_log),&>> $(instdest_log))
 	[ -d $(dist_DIR)/rootfs/lib/firmware ] || \
 	  $(MKDIR) $(dist_DIR)/rootfs/lib/firmware
 	$(CP) $(wlregdb_DIR)/regulatory.db $(wlregdb_DIR)/regulatory.db.p7s \
 	  $(dist_DIR)/rootfs/lib/firmware/
 	$(CP) $(ap6212_FWDIR)/* $(dist_DIR)/rootfs/
-	$(dist_strip_log)
+	[ -d $(dist_DIR)/rootfs/lib/firmware/ath9k_htc ] || \
+	if [ -e /lib/firmware/ath9k_htc/htc_9271-1.4.0.fw ]; then \
+	  $(MKDIR) $(dist_DIR)/rootfs/lib/firmware/ath9k_htc; \
+	  $(CP) /lib/firmware/ath9k_htc/htc_9271-1.4.0.fw \
+	    $(dist_DIR)/rootfs/lib/firmware/ath9k_htc/; \
+	fi
+	@echo -e "$(ANSI_GREEN)Strip executable$(ANSI_NORMAL)"
+	$(if $(strip_log),echo "" >> $(strip_log); date >> $(strip_log))
 	for i in $(addprefix $(dist_DIR)/rootfs/, \
 	    usr/lib/libgcc_s.so.1 usr/lib64/libgcc_s.so.1 \
 	    bin sbin lib lib64 usr/bin usr/sbin usr/lib usr/lib64); do \
 	  [ ! -e "$$i" ] && { \
-	    $(call dist_strip_log,"Strip skipping missing explicite $$i"); \
+	    $(if $(strip_log),echo "Strip skipping missing explicite $$i" >> $(strip_log);) \
 	    continue; \
 	  }; \
 	  [ -f "$$i" ] && { \
-	    $(call dist_strip_log,"Strip explicite $$i"); \
+	    $(if $(strip_log),echo "Strip explicite $$i" >> $(strip_log);) \
 	    $(STRIP) -g $$i; \
 	    continue; \
 	  }; \
 	  [ -d "$$i" ] && { \
-	    $(call dist_strip_log,"Strip recurse dir $$i"); \
+	    $(if $(strip_log),echo "Strip recurse dir $$i" >> $(strip_log);) \
 	    for j in `find $$i`; do \
 	      [[ "$$j" =~ .+(\.sh|\.pl|\.py|c_rehash|ncursesw6-config|alsaconf) ]] && { \
-	        $(call dist_strip_log,"Skip known script/file $$j"); \
+	        $(if $(strip_log),echo "Skip known script/file $$j" >> $(strip_log);) \
 	        continue; \
 		  }; \
 	      [[ "$$j" =~ .*/lib/modules/.+\.ko ]] && { \
-	        $(call dist_strip_log,"Strip implicite kernel module $$j"); \
+	        $(if $(strip_log),echo "Strip implicite kernel module $$j" >> $(strip_log);) \
 	        $(STRIP) -g $$j; \
 	        continue; \
-		  }; \
-		  [ ! -x "$$j" ] && { \
-	        $(call dist_strip_log,"Strip skipping non-executable $$j"); \
-		    continue; \
-		  }; \
-		  [ -L "$$j" ] && { \
-		    $(call dist_strip_log,"Strip skipping symbolic $$j -> `readlink $$j`"); \
-		    continue; \
-		  }; \
-		  [ -d "$$j" ] && { \
-		    $(call dist_strip_log,"Strip skipping dirname $$j"); \
-		    continue; \
-		  }; \
-	      $(call dist_strip_log,"Strip implicite file $$j"); \
+	      }; \
+	      [ ! -x "$$j" ] && { \
+	        $(if $(strip_log),echo "Strip skipping non-executable $$j" >> $(strip_log);) \
+	        continue; \
+	      }; \
+	      [ -L "$$j" ] && { \
+	        $(if $(strip_log),echo "Strip skipping symbolic $$j -> `readlink $$j`" >> $(strip_log);) \
+	        continue; \
+	      }; \
+	      [ -d "$$j" ] && { \
+	        $(if $(strip_log),echo "Strip skipping dirname $$j" >> $(strip_log);) \
+	        continue; \
+	      }; \
+	      $(if $(strip_log),echo "Strip implicite file $$j" >> $(strip_log);) \
 	      $(STRIP) -g $$j; \
 	    done; \
 	  }; \
 	done
+	@echo -e "$(ANSI_GREEN)Install prebuilt$(ANSI_NORMAL)"
 	$(CP) $(wildcard $(PROJDIR)/prebuilt/common/* \
 	  $(PROJDIR)/prebuilt/$(APP_PLATFORM)/common/*) \
 	  $(dist_DIR)/rootfs/
-	# depmod -b $(dist_DIR)/rootfs \
-	#   $(if $(wildcard $(linux_BUILDDIR)/System.map),-e -F$(linux_BUILDDIR)/System.map) \
-	#   -C $(dist_DIR)/rootfs/etc/depmod.d/ $(linux_RELSTR)
 	$(bb_DIR)/examples/depmod.pl \
-	  -b $(dist_DIR)/rootfs/lib/modules/$(linux_RELSTR) \
+	  -b "$(dist_DIR)/rootfs/lib/modules/$(linux_kernelrelease)" \
 	  -F $(linux_BUILDDIR)/System.map
-	# du -ac $(dist_DIR) | sort -n
 
 # sudo dd if=$(dist_DIR)/boot/u-boot-sunxi-with-spl.bin of=/dev/sdxxx bs=1024 seek=8
 bpi_dist_sd:
@@ -785,7 +1069,7 @@ xm_dist:
 
 xm_dist_sd:
 	$(CP) $(dist_DIR)/boot/* /media/$(USER)/BOOT/
-	$(CP) $(BUILDDIR)/sysroot/* /media/$(USER)/rootfs/
+	$(CP) $(BUILD_SYSROOT)/* /media/$(USER)/rootfs/
 
 xm_boot_tools:
 	[ -d $(PROJDIR)/tool/bin ] || $(MKDIR) $(PROJDIR)/tool/bin
