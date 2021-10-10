@@ -36,7 +36,7 @@ Bootloader combind BL31 from ARM Trusted Firmware (ATF), System Control Processo
 
 Boot ROM (BROM) load bootloader from SD card offset 8k:
 
-    dd if=build/uboot/u-boot-sunxi-with-spl.bin of=/dev/sdd bs=1024 seek=8
+    dd if=build/uboot/u-boot-sunxi-with-spl.bin of=/dev/sd?? bs=1024 seek=8
 
 The uboot.env size must match menuconfig, otherwize lead to CRC error when boot
 

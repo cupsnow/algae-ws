@@ -1,0 +1,37 @@
+#!/bin/sh
+
+. /etc/init.d/func
+
+log_file=/var/run/ifplugd.log
+
+echo "" >> $log_file
+date >> $log_file
+echo "$0 $*" >> $log_file
+
+iface=$1
+act=$2
+
+case $iface in
+eth*)
+  if [ "$act" == "up" ]; then
+    ifconfig wlan0 down &>/dev/null
+    udhcpc -i $iface -nq -T 1 || {
+	  echo "Failed udhcpc -i $iface -nq -T 1" >> $log_file
+	  return 0
+	}
+    sleep 0.1
+    [ ! -e "/etc/init.d/mdnsd" ] || {
+	  echo "/etc/init.d/mdnsd restart" >> $log_file
+	  /etc/init.d/mdnsd restart
+	}
+    [ ! -e "/etc/init.d/airplay" ] || {
+	  echo "/etc/init.d/airplay restart" >> $log_file
+	  /etc/init.d/airplay restart
+	}
+  fi
+  ;;
+wlan*)
+  ;;
+*)
+  ;;
+esac

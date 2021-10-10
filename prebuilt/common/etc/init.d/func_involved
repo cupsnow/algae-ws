@@ -1,0 +1,50 @@
+#!/bin/sh
+
+func_involved="$(( $func_involved + 1 ))"
+[ $func_involved -le 1 ] || echo "func_involved: $func_involved"
+
+# daemon [start|stop] <PROG> [ARGS...]
+# Start PROG when not running or kill all instance
+#
+daemon () {
+  case "$1" in
+  "start")
+    shift
+    pgrep -x $1 || $* &
+    ;;
+  "stop")
+    shift
+    pgrep -x $1 | while read PID; do
+      kill $PID
+    done
+    ;;
+  "restart")
+    shift
+    pgrep -x $1 | while read PID; do
+      kill $PID
+    done
+    for i in `seq 10`; do
+      pgrep -x $1 &>/dev/null || break
+      sleep 0.3
+    done
+    pgrep -x $1 || $* &
+    ;;
+  *)
+    ;;
+  esac
+}
+
+# lo [start]
+lo () {
+  lo_addr=127.0.0.1
+
+  case "$1" in
+  "start")
+    ifconfig lo up ${lo_addr} || { echo "ifconfig lo"; return 1; }
+    route add -net ${lo_addr} netmask 255.0.0.0 lo || { echo "route add"; return 1; }
+    ;;
+  *)
+    ;;
+  esac
+}
+

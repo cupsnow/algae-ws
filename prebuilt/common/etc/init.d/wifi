@@ -1,0 +1,133 @@
+#!/bin/sh
+
+ieee80211_regdom=TW
+
+wifi_stop () {
+  for i in brcmfmac brcmutil \
+      ath9k_htc ath9k_common ath9k_hw ath \
+      mac80211 cfg80211 compat; do
+    [ ! -e /sys/module/$i ] || rmmod $i
+  done
+}
+
+# fmac [start|stop]
+# insmod instead of modprobe to prevent confuse kernel and backport provided drivers
+#
+fmac () {
+  brcmfmac_args="debug=15"
+  cfg80211_args="ieee80211_regdom=${ieee80211_regdom}"
+
+  ko_root="/lib/modules/`uname -r`"
+
+  # backport prioritize
+  fmac_root="${ko_root}/updates"
+  brcmfmac="`find ${fmac_root} -iname brcmfmac.ko 2>/dev/null`"
+
+  case "$1" in
+  start)
+    if [ -e "${brcmfmac}" ]; then
+      brcmutil="`find ${fmac_root} -iname brcmutil.ko 2>/dev/null`"
+
+      mac80211="`find ${fmac_root} -iname mac80211.ko 2>/dev/null`"
+      compat="`find ${fmac_root} -iname compat.ko 2>/dev/null`"
+      cfg80211="`find ${fmac_root} -iname cfg80211.ko 2>/dev/null`"
+
+      [ ! -e "${compat}" -o -e "/sys/module/compat" ] || {
+        insmod ${compat} || { echo "insmod compat"; return 1; };
+      }
+
+      [ -e "/sys/module/cfg80211" ] || {
+        insmod ${cfg80211} ${cfg80211_args} || { echo "insmod cfg80211"; return 1; };
+      }
+
+      [ ! -e "${mac80211}" -o -e "/sys/module/mac80211" ] || {
+        insmod ${mac80211} ${mac80211_args} || { echo "insmod mac80211"; return 1; };
+      }
+
+      [ -e "/sys/module/brcmutil" ] || {
+        insmod ${brcmutil} || { echo "insmod brcmutil"; return 1; };
+      }
+
+      [ -e "/sys/module/brcmfmac" ] || {
+        insmod ${brcmfmac} ${brcmfmac_args} || { echo "insmod brcmfmac"; return 1; };
+      }
+    else
+      # assume kernel mod
+      [ -e "/sys/module/cfg80211" ] || {
+        modprobe cfg80211 ${cfg80211_args} || { echo "insmod cfg80211"; return 1; };
+      }
+      [ -e "/sys/module/brcmfmac" ] || {
+        modprobe brcmfmac ${brcmfmac_args} || { echo "insmod brcmfmac"; return 1; };
+      }
+    fi
+    ;;
+  stop)
+    wifi_stop
+    ;;
+  *)
+    ;;
+  esac
+}
+
+# ath9k_htc [start|stop]
+# use kernel provided drivers
+#
+ath9k_htc () {
+  cfg80211_args="ieee80211_regdom=${ieee80211_regdom}"
+
+  ath9k_htc_root="/lib/modules/`uname -r`/kernel"
+  ath9k_htc="`find ${ath9k_htc_root} -iname ath9k_htc.ko`"
+   # fininalize depends
+  if [ -e "${ath9k_htc}" ]; then
+    cfg80211=`find ${ath9k_htc_root} -iname cfg80211.ko`
+    mac80211=`find ${ath9k_htc_root} -iname mac80211.ko`
+  fi
+  case "$1" in
+  start)
+    [ ! -e ${ath9k_htc} ] && { echo "missing ath9k_htc"; return 1; }
+
+    [ -e "/sys/module/cfg80211" ] || {
+      insmod ${cfg80211} ${cfg80211_args} || { echo "insmod cfg80211"; return 1; };
+    }
+
+    [ ! -e "${mac80211}" -o -e "/sys/module/mac80211" ] || {
+      insmod ${mac80211} ${mac80211_args} || { echo "insmod mac80211"; return 1; };
+    }
+
+    [ -e "/sys/module/ath9k_htc" ] || {
+      # depmod do something
+      modprobe ath9k_htc ${ath9k_htc_args} || { echo "modprobe ath9k_htc"; return 1; };
+    }
+    ;;
+  stop)
+    wifi_stop
+    ;;
+  *)
+    ;;
+  esac
+}
+
+case "$1" in
+"start")
+  wifi_stop
+  fmac $1
+  ;;
+"ath9k_htc")
+  wifi_stop
+  ath9k_htc start
+  ;;
+"stop")
+  wifi_stop
+  ;;
+*)
+  cat <<-EOHERE
+USAGE
+    `basename $0` [start | stop]
+
+OPTIONS
+    start  Start service
+    stop   Stop service
+
+EOHERE
+  ;;
+esac
