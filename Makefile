@@ -1096,7 +1096,7 @@ fftest1:
 #
 dist_DIR?=$(DESTDIR)
 wlregdb_DIR?=$(PKGDIR2)/wireless-regdb
-ap6212_FWDIR=$(PROJDIR)/package/ap6212/linux-firmware
+bpiwififw_DIR=$(PKGDIR2)/BPI_WiFi_Firmware/ap6212
 
 # reference from linux_dtbs
 dist_DTINCDIR+=$(linux_DIR)/scripts/dtc/include-prefixes
@@ -1164,7 +1164,6 @@ ub20_dist:
 	$(MAKE) libnl_install alsautils_install ff_dist_install openssl_install
 #mdns_install iw_install
 	$(MAKE) wpasup_install fdkaac_install
-
 
 bpi_dist: dist_DTINCDIR+=$(linux_DIR)/arch/arm64/boot/dts/allwinner
 bpi_dist: dist_dts=$(PROJDIR)/linux-sun50i-a64-bananapi-m64.dts
@@ -1237,10 +1236,9 @@ endif
 	@cd $(BUILD_SYSROOT) && \
 	  rsync -avvR --ignore-missing-args \
 		  --exclude="bin/amidi" --exclude="share/aclocal" --exclude="share/man" \
-		  --exclude="share/sounds" --exclude="share/doc" \
-		  --exclude="share/ffmpeg/examples" --exclude="share/ffmpeg/*.ffpreset" \
+		  --exclude="share/sounds" --exclude="share/doc" --exclude="share/ffmpeg" \
 	      --exclude="share/locale" \
-	      etc bin sbin share usr/bin usr/sbin var linuxrc \
+	      etc bin sbin share usr/bin usr/sbin usr/share var linuxrc \
 	      $(dist_DIR)/rootfs/ $(if $(dist_log),&>> $(dist_log))
 	@cd $(BUILD_SYSROOT) && \
 	  rsync -avvR --ignore-missing-args \
@@ -1251,8 +1249,14 @@ endif
 	  $(MKDIR) $(dist_DIR)/rootfs/lib/firmware
 	@rsync -avv $(wlregdb_DIR)/regulatory.db $(wlregdb_DIR)/regulatory.db.p7s \
 		$(dist_DIR)/rootfs/lib/firmware/ $(if $(dist_log),&>> $(dist_log))
-	@rsync -avv $(ap6212_FWDIR)/* $(dist_DIR)/rootfs/ \
-	    $(if $(dist_log),&>> $(dist_log))
+	@[ -d $(dist_DIR)/rootfs/lib/firmware/brcm ] || \
+	  $(MKDIR) $(dist_DIR)/rootfs/lib/firmware/brcm
+	@rsync -avv $(bpiwififw_DIR)/fw_bcm43438a1.bin \
+	    $(dist_DIR)/rootfs/lib/firmware/brcm/brcmfmac43430-sdio.bin \
+		$(if $(dist_log),&>> $(dist_log))
+	@rsync -avv $(bpiwififw_DIR)/nvram_ap6212.txt \
+	    $(dist_DIR)/rootfs/lib/firmware/brcm/brcmfmac43430-sdio.txt \
+		$(if $(dist_log),&>> $(dist_log))
 	@if [ -e "/lib/firmware/ath9k_htc/htc_9271-1.4.0.fw" ]; then \
 	  echo -e "$(ANSI_GREEN)Install Atheros AR9271 firmware$(ANSI_NORMAL)"; \
 	  { [ -d $(dist_DIR)/rootfs/lib/firmware/ath9k_htc ] || \
@@ -1276,11 +1280,11 @@ endif
 bpi_dist_sd:
 	rsync -avv $(dist_DIR)/boot/* /media/$(USER)/BOOT/
 ifeq ("$(NB)","")
+	rsync -avv $(dist_DIR)/rootfs/* /media/$(USER)/rootfs/
+else
 	rsync -avv \
 	    --exclude="lib/modules" \
 		$(dist_DIR)/rootfs/* /media/$(USER)/rootfs/
-else
-	rsync -avv $(dist_DIR)/rootfs/* /media/$(USER)/rootfs/
 endif
 
 xm_dist: dist_DTINCDIR+=$(linux_DIR)/arch/arm/boot/dts
