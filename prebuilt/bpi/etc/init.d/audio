@@ -1,0 +1,29 @@
+#!/bin/sh
+
+mods="sun4i-i2s sun8i-codec sun50i-codec-analog sun4i-spdif snd-soc-simple-card"
+
+case "$1" in
+start)
+  for i in $mods; do
+    [ -e /sys/module/$i ] || modprobe $i
+  done
+  ;;
+stop)
+  mods_r=
+  for i in $mods; do
+    mods_r="$i $mods_r"
+  done
+  modprobe -r $mods_r
+  ;;
+*)
+  cat <<-EOHERE
+USAGE
+    `basename $0` [start | stop]
+
+OPTIONS
+    start  Start service
+    stop   Stop service
+
+EOHERE
+  ;;
+esac

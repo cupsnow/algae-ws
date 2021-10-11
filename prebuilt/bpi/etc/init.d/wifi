@@ -1,0 +1,23 @@
+#!/bin/sh
+
+. /etc/init.d/func
+
+case "$1" in
+"start")
+  modprobe brcmfmac
+  ;;
+"stop")
+  modprobe -r brcmfmac
+  ;;
+*)
+  cat <<-EOHERE
+USAGE
+    `basename $0` [start|stop]
+
+OPTIONS
+    start  Start service
+    stop   Stop service
+
+EOHERE
+  ;;
+esac

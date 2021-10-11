@@ -1096,7 +1096,7 @@ fftest1:
 #
 dist_DIR?=$(DESTDIR)
 wlregdb_DIR?=$(PKGDIR2)/wireless-regdb
-bpiwififw_DIR=$(PKGDIR2)/BPI_WiFi_Firmware/ap6212
+ap6212_DIR=$(PROJDIR)/package/ap6212
 
 # reference from linux_dtbs
 dist_DTINCDIR+=$(linux_DIR)/scripts/dtc/include-prefixes
@@ -1251,10 +1251,10 @@ endif
 		$(dist_DIR)/rootfs/lib/firmware/ $(if $(dist_log),&>> $(dist_log))
 	@[ -d $(dist_DIR)/rootfs/lib/firmware/brcm ] || \
 	  $(MKDIR) $(dist_DIR)/rootfs/lib/firmware/brcm
-	@rsync -avv $(bpiwififw_DIR)/fw_bcm43438a1.bin \
+	@rsync -avv $(ap6212_DIR)/bpi/fw_bcm43438a1.bin \
 	    $(dist_DIR)/rootfs/lib/firmware/brcm/brcmfmac43430-sdio.bin \
 		$(if $(dist_log),&>> $(dist_log))
-	@rsync -avv $(bpiwififw_DIR)/nvram_ap6212.txt \
+	@rsync -avv $(ap6212_DIR)/bpi/nvram_ap6212.txt \
 	    $(dist_DIR)/rootfs/lib/firmware/brcm/brcmfmac43430-sdio.txt \
 		$(if $(dist_log),&>> $(dist_log))
 	@if [ -e "/lib/firmware/ath9k_htc/htc_9271-1.4.0.fw" ]; then \
