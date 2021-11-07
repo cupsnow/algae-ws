@@ -11,33 +11,17 @@ SHELL=/bin/bash
 BUILDDIR2=$(abspath $(PROJDIR)/../build)
 PKGDIR2=$(abspath $(PROJDIR)/..)
 
-APP_ATTR_xm?=xm
-APP_ATTR_bpi?=bpi
+# feature: containing APP_PLATFORM
+#   ath9k_htc: subject to usb wifi dongle
+APP_ATTR_xm?=xm ath9k_htc
+APP_ATTR_bpi?=bpi ath9k_htc
 APP_ATTR_ub20?=ub20
 export APP_ATTR?=$(APP_ATTR_bpi)
 
+# id for app
 APP_PLATFORM=$(strip $(filter xm bpi ub20,$(APP_ATTR)))
 
-ifneq ("$(strip $(filter xm,$(APP_ATTR)))","")
-TOOLCHAIN_PATH=$(HOME)/07_sw/gcc-arm-none-linux-gnueabihf
-CROSS_COMPILE=$(shell $(TOOLCHAIN_PATH)/bin/*-gcc -dumpmachine)-
-EXTRA_PATH+=$(TOOLCHAIN_PATH:%=%/bin)
-TOOLCHAIN_SYSROOT?=$(abspath $(shell PATH=$(call ENVPATH,$(EXTRA_PATH)) && \
-  $(CC) -print-sysroot))
-else ifneq ("$(strip $(filter bpi,$(APP_ATTR)))","")
-TOOLCHAIN_PATH=$(HOME)/07_sw/gcc-aarch64-none-linux-gnu
-CROSS_COMPILE=$(shell $(TOOLCHAIN_PATH)/bin/*-gcc -dumpmachine)-
-EXTRA_PATH+=$(TOOLCHAIN_PATH:%=%/bin)
-TOOLCHAIN_SYSROOT?=$(abspath $(shell PATH=$(call ENVPATH,$(EXTRA_PATH)) && \
-  $(CC) -print-sysroot))
-OR1K_TOOLCHAIN_PATH=$(HOME)/07_sw/or1k-linux-musl
-OR1K_CROSS_COMPILE=$(shell $(OR1K_TOOLCHAIN_PATH)/bin/*-gcc -dumpmachine)-
-EXTRA_PATH+=$(OR1K_TOOLCHAIN_PATH:%=%/bin)
-OR1K_TOOLCHAIN_SYSROOT?=$(abspath $(shell PATH=$(call ENVPATH,$(EXTRA_PATH)) && \
-  $(OR1K_CROSS_COMPILE)gcc -print-sysroot))
-endif
-
-# build output aggregate
+# id for package build
 ifneq ("$(strip $(filter xm,$(APP_PLATFORM)))","")
 APP_BUILD=arm
 else ifneq ("$(strip $(filter bpi,$(APP_PLATFORM)))","")
@@ -46,6 +30,17 @@ else
 APP_BUILD=$(APP_PLATFORM)
 endif
 
+# compiler(s) used to build app
+ifneq ("$(strip $(filter xm,$(APP_ATTR)))","")
+$(eval $(call DECL_TOOLCHAIN_GCC,$(HOME)/07_sw/gcc-arm-none-linux-gnueabihf))
+EXTRA_PATH+=$(TOOLCHAIN_PATH:%=%/bin)
+else ifneq ("$(strip $(filter bpi,$(APP_ATTR)))","")
+$(eval $(call DECL_TOOLCHAIN_GCC,$(HOME)/07_sw/gcc-aarch64-none-linux-gnu))
+$(eval $(call DECL_TOOLCHAIN_GCC,$(HOME)/07_sw/or1k-linux-musl,OR1K))
+EXTRA_PATH+=$(TOOLCHAIN_PATH:%=%/bin) $(OR1K_TOOLCHAIN_PATH:%=%/bin)
+endif
+
+# executable path for sub-make
 export PATH:=$(call ENVPATH,$(PROJDIR)/tool/bin $(EXTRA_PATH))
 # export LD_LIBRARY_PATH:=$(call ENVPATH,$(PROJDIR)/tool/lib $(LD_LIBRARY_PATH))
 
@@ -55,19 +50,21 @@ BUILD_SYSROOT?=$(BUILDDIR)/sysroot-$(APP_PLATFORM)
 BUILD_PKGCFG_ENV+=PKG_CONFIG_LIBDIR="$(BUILD_SYSROOT)/lib/pkgconfig" \
   PKG_CONFIG_SYSROOT_DIR="$(BUILD_SYSROOT)"
 
-# $(info Makefile ... APP_ATTR: $(APP_ATTR), APP_PLATFORM: $(APP_PLATFORM) \
-#   , TOOLCHAIN_SYSROOT: $(TOOLCHAIN_SYSROOT), OR1K_TOOLCHAIN_SYSROOT: $(OR1K_TOOLCHAIN_SYSROOT) \
-#   , PATH=$(PATH))
+# $(info Makefile ... Variable summary:$(NEWLINE) \
+#     $(EMPTY) APP_ATTR: $(APP_ATTR), APP_PLATFORM: $(APP_PLATFORM)$(NEWLINE) \
+#     $(EMPTY) TOOLCHAIN_SYSROOT: $(TOOLCHAIN_SYSROOT)$(NEWLINE) \
+#     $(EMPTY) OR1K_TOOLCHAIN_SYSROOT: $(OR1K_TOOLCHAIN_SYSROOT)$(NEWLINE) \
+#     $(EMPTY) PATH=$(PATH))
 
 #------------------------------------
 #
+run_help_color=echo -e "Color demo: $(strip $(foreach i,RED GREEN BLUE CYAN YELLOW MAGENTA, \
+	    $(ANSI_$(i))$(i))$(ANSI_NORMAL))"
 help:
-	@echo -e "$(strip $(foreach i,RED GREEN BLUE CYAN YELLOW MAGENTA, \
-	  $(ANSI_$(i))$(i))$(ANSI_NORMAL))"
-	@echo "$(strip $(foreach i,APP_ATTR BUILD_SYSROOT TOOLCHAIN_SYSROOT \
-	  OR1K_TOOLCHAIN_SYSROOT, \
-	  $(i): "'"'"$($(i))"'"'"))"
-# @$(BUILD_PKGCFG_ENV) pkg-config --list-all
+	@$(run_help_color)
+	@echo "APP_ATTR: $(APP_ATTR)"
+	@echo "TOOLCHAIN_SYSROOT: $(TOOLCHAIN_SYSROOT)"
+	$(BUILD_PKGCFG_ENV) pkg-config --list-all
 
 var_%:
 	@echo "$(strip $($(@:var_%=%)))"
@@ -88,12 +85,12 @@ pyenv2 $(BUILDDIR)/pyenv2:
 	  pip install sphinx_rtd_theme six
 
 #------------------------------------
+# sunxi-tools v1.1-487-g6c02224
 # dep: dtc
 #
 sunxitools_DIR=$(PKGDIR2)/sunxi-tools
 sunxitools_BUILDDIR=$(BUILDDIR2)/sunxitools-host
 sunxitools_CFLAGS=-I$(PROJDIR)/tool/include -L$(PROJDIR)/tool/lib
-
 sunxitools_MAKE=$(MAKE) CROSS_COMPILE=$(CROSS_COMPILE) \
     CFLAGS="$(sunxitools_CFLAGS)" DESTDIR=$(DESTDIR) PREFIX= \
     -C $(sunxitools_BUILDDIR)
@@ -110,34 +107,41 @@ sunxitools_%: $(sunxitools_BUILDDIR)/Makefile
 	$(sunxitools_MAKE) $(@:sunxitools_%=%)
 
 #------------------------------------
+# Device Tree Compiler v1.1-487-g6c02224
 #
 dtc_DIR?=$(PKGDIR2)/dtc
 dtc_BUILDDIR?=$(BUILDDIR2)/dtc-host
 dtc_MAKE=$(MAKE) PREFIX= DESTDIR=$(DESTDIR) NO_PYTHON=1 -C $(dtc_BUILDDIR)
 # dtc_MAKE+=V=1
 
-dtc_defconfig $(dtc_BUILDDIR):
-	git clone $(dtc_DIR) $@
+dtc_defconfig $(dtc_BUILDDIR)/Makefile:
+	git clone $(dtc_DIR) $(dtc_BUILDDIR)
 
 dtc_distclean:
 	$(RM) $(dtc_BUILDDIR)
 
-dtc: $(dtc_BUILDDIR)
-	$(dtc_MAKE)
-
 dtc_install: DESTDIR=$(PROJDIR)/tool
 
-dtc_%: $(dtc_BUILDDIR)
+dtc_dist_install: DESTDIR=$(PROJDIR)/tool
+dtc_dist_install:
+	echo "NO_PYTHON=1" > $(dtc_BUILDDIR)_footprint
+	$(call RUN_DIST_INSTALL1,dtc,$(dtc_BUILDDIR)/Makefile)
+
+dtc: $(dtc_BUILDDIR)/Makefile
+	$(dtc_MAKE)
+
+dtc_%: $(dtc_BUILDDIR)/Makefile
 	$(dtc_MAKE) $(@:dtc_%=%)
 
 #------------------------------------
+# ARM Trusted Firmware-A v2.5-294-gabde216dc
 # for bpi
 #   make atf_bl31
 #
 atf_DIR?=$(PKGDIR2)/atf
 atf_BUILDDIR?=$(BUILDDIR2)/atf-$(APP_PLATFORM)
 atf_DEF_MAKE=$(MAKE) CROSS_COMPILE=$(CROSS_COMPILE) DEBUG=1 \
-  BUILD_BASE=$(atf_BUILDDIR)
+    BUILD_BASE=$(atf_BUILDDIR)
 ifneq ("$(strip $(filter bpi,$(APP_ATTR)))","")
 atf_DEF_MAKE+=ARCH=aarch64 PLAT=sun50i_a64
 else
@@ -151,8 +155,8 @@ atf_doc: | $(BUILDDIR)/pyenv
 	. $(BUILDDIR)/pyenv/bin/activate && \
 	  BUILDDIR=$(atf_BUILDDIR)/doc $(atf_MAKE) doc
 	tar -Jcvf $(BUILDDIR)/atf-docs.tar.xz --show-transformed-names \
-	  --transform="s/html/atf-docs/" \
-	  -C $(atf_BUILDDIR)/package/atf/docs/build html
+	    --transform="s/html/atf-docs/" \
+	    -C $(atf_BUILDDIR)/package/atf/docs/build html
 
 # atf:
 # 	$(atf_MAKE)
@@ -161,14 +165,15 @@ atf_%:
 	$(atf_MAKE) $(@:atf_%=%)
 
 #------------------------------------
+# Crust: Libre SCP firmware for Allwinner sunxi SoCs v0.4-5-gcff057d
 # for bpi
 #   make crust_scp
 #
 crust_DIR?=$(PKGDIR2)/crust
 crust_BUILDDIR?=$(BUILDDIR2)/crust-$(APP_PLATFORM)
 crust_MAKE=$(MAKE) OBJ=$(crust_BUILDDIR) SRC=$(crust_DIR) \
-  CROSS_COMPILE=$(OR1K_CROSS_COMPILE) -f $(crust_DIR)/Makefile \
-  -C $(crust_BUILDDIR)
+    CROSS_COMPILE=$(OR1K_CROSS_COMPILE) -f $(crust_DIR)/Makefile \
+    -C $(crust_BUILDDIR)
 
 crust_defconfig $(crust_BUILDDIR)/.config:
 	[ -d "$(crust_BUILDDIR)" ] || $(MKDIR) $(crust_BUILDDIR)
@@ -184,20 +189,27 @@ crust_%: $(crust_BUILDDIR)/.config
 	$(crust_MAKE) $(@:crust_%=%)
 
 #------------------------------------
+# u-boot v2021.10-rc1-269-g8f07f5376a
 # ub_tools-only_defconfig ub_tools-only
 # dep for bpi: atf_bl31, crust_scp
 #
 ub_DIR?=$(PKGDIR2)/uboot
 ub_BUILDDIR?=$(BUILDDIR2)/uboot-$(APP_PLATFORM)
 ub_DEF_MAKE?=$(MAKE) ARCH=arm CROSS_COMPILE=$(CROSS_COMPILE) \
-  KBUILD_OUTPUT=$(ub_BUILDDIR) CONFIG_TOOLS_DEBUG=1
+    KBUILD_OUTPUT=$(ub_BUILDDIR) CONFIG_TOOLS_DEBUG=1
 ifneq ("$(strip $(filter bpi,$(APP_ATTR)))","")
 ub_DEF_MAKE+=BL31=$(atf_BUILDDIR)/sun50i_a64/debug/bl31.bin \
-  SCP=$(or $(wildcard $(crust_BUILDDIR)/scp/scp.bin),/dev/null)
+    SCP=$(or $(wildcard $(crust_BUILDDIR)/scp/scp.bin),/dev/null)
 endif
 ub_MAKE=$(ub_DEF_MAKE) -C $(ub_BUILDDIR)
-ub_env_size=$(shell echo "$$(( $$(sed -n -e "s/^\s*CONFIG_ENV_SIZE\s*=\s*\([0-9x]\)/\1/p" $(ub_BUILDDIR)/.config) ))")
-ub_env_redundand=$(shell grep -e "^\s*CONFIG_SYS_REDUNDAND_ENVIRONMENT\s*=\s*y\s*" $(ub_BUILDDIR)/.config > /dev/null && echo "-r")
+# ub_env_size=$(shell echo "$$(( $$(sed -n -e "s/^\s*CONFIG_ENV_SIZE\s*=\s*\([0-9x]\)/\1/p" $(ub_BUILDDIR)/.config) ))")
+# ub_env_redundand=$(shell grep -e "^\s*CONFIG_SYS_REDUNDAND_ENVIRONMENT\s*=\s*y\s*" $(ub_BUILDDIR)/.config > /dev/null && echo "-r")
+
+# return size if found
+ub_env_size_cmd=sed -n -e s/^\s*CONFIG_ENV_SIZE\s*=\s*\([0-9x]\)/\1/p $(ub_BUILDDIR)/.config
+
+# return 0 if found
+ub_env_redundand_cmd=grep -e ^\s*CONFIG_SYS_REDUNDAND_ENVIRONMENT\s*=\s*y\s* $(ub_BUILDDIR)/.config
 
 ub_mrproper ub_help:
 	$(ub_DEF_MAKE) -C $(ub_DIR) $(@:ub_%=%)
@@ -256,6 +268,7 @@ ub_%: $(ub_BUILDDIR)/.config
 .NOTPARALLEL: ub ub_%
 
 #------------------------------------
+# Linux kernel v5.14-rc7-89-g77dd11439b86
 #
 linux_DIR?=$(PKGDIR2)/linux
 linux_BUILDDIR?=$(BUILDDIR2)/linux-$(APP_PLATFORM)
@@ -329,6 +342,7 @@ linux_%: $(linux_BUILDDIR)/.config
 .NOTPARALLEL: linux linux_%
 
 #------------------------------------
+# busybox 1_12_0-7872-g8ae6a4344
 #
 bb_DIR?=$(PKGDIR2)/busybox
 bb_BUILDDIR=$(BUILDDIR2)/busybox-$(APP_BUILD)
@@ -365,6 +379,11 @@ bb_install: CONFIG_PREFIX=$(BUILD_SYSROOT)
 bb: $(bb_BUILDDIR)/.config
 	$(bb_MAKE)
 
+bb_dist_install: CONFIG_PREFIX=$(BUILD_SYSROOT)
+bb_dist_install:
+	$(RM) $(bb_BUILDDIR)_footprint
+	$(call RUN_DIST_INSTALL1,bb CONFIG_PREFIX,$(bb_BUILDDIR)/Makefile)
+
 bb_%: $(bb_BUILDDIR)/.config
 	$(bb_MAKE) $(@:bb_%=%)
 
@@ -383,17 +402,9 @@ libasound_configure $(libasound_BUILDDIR)/Makefile:
 libasound_install: DESTDIR=$(BUILD_SYSROOT)
 
 libasound_dist_install: DESTDIR=$(BUILD_SYSROOT)
-libasound_dist_install: libasound_dist_md5sum=$(libasound_BUILDDIR)/$(APP_PLATFORM)_dist.md5sum
-libasound_dist_install: libasound_dist_tar=$(libasound_BUILDDIR)/$(APP_PLATFORM)_dist.tar
 libasound_dist_install:
-	if ! md5sum -c "$(libasound_dist_md5sum)"; then \
-	  $(MAKE) DESTDIR=$(libasound_BUILDDIR)/$(APP_PLATFORM)_dist libasound_install; \
-	  tar -cvf $(libasound_dist_tar) -C $(libasound_BUILDDIR) $(APP_PLATFORM)_dist; \
-	  md5sum $(libasound_BUILDDIR)/Makefile $(libasound_dist_tar) > $(libasound_dist_md5sum); \
-	  $(RM) $(libasound_BUILDDIR)/$(APP_PLATFORM)_dist; \
-	fi
-	[ -d "$(DESTDIR)" ] || $(MKDIR) $(DESTDIR)
-	tar -xvf $(libasound_dist_tar) --strip-components=1 -C $(DESTDIR)
+	echo "--disable-topology" > $(libasound_BUILDDIR)_footprint
+	$(call RUN_DIST_INSTALL1,libasound,$(libasound_BUILDDIR)/Makefile)
 
 libasound: $(libasound_BUILDDIR)/Makefile
 	$(libasound_MAKE)
@@ -409,7 +420,7 @@ zlib_MAKE=$(MAKE) DESTDIR=$(DESTDIR) -C $(zlib_BUILDDIR)
 
 zlib_configure $(zlib_BUILDDIR)/configure.log:
 	[ -d "$(zlib_BUILDDIR)" ] || \
-	  git clone --depth=1 $(zlib_DIR) $(zlib_BUILDDIR)
+	  git clone $(zlib_DIR) $(zlib_BUILDDIR)
 	cd $(zlib_BUILDDIR) && \
 	  prefix= CROSS_PREFIX=$(CROSS_COMPILE) CFLAGS="-fPIC" ./configure
 
@@ -417,6 +428,11 @@ zlib_distclean:
 	$(RM) $(zlib_BUILDDIR)
 
 zlib_install: DESTDIR=$(BUILD_SYSROOT)
+
+zlib_dist_install: DESTDIR=$(BUILD_SYSROOT)
+zlib_dist_install:
+	echo "-fPIC" > $(zlib_BUILDDIR)_footprint
+	$(call RUN_DIST_INSTALL1,zlib,$(zlib_BUILDDIR)/configure.log)
 
 zlib: $(zlib_BUILDDIR)/configure.log
 	$(zlib_MAKE)
@@ -437,6 +453,11 @@ attr_defconfig $(attr_BUILDDIR)/Makefile:
 	    --prefix=
 
 attr_install: DESTDIR=$(BUILD_SYSROOT)
+
+attr_dist_install: DESTDIR=$(BUILD_SYSROOT)
+attr_dist_install:
+	$(RM) $(attr_BUILDDIR)_footprint
+	$(call RUN_DIST_INSTALL1,attr,$(attr_BUILDDIR)/Makefile)
 
 attr: $(attr_BUILDDIR)/Makefile
 	$(attr_MAKE)
@@ -463,6 +484,11 @@ acl_defconfig $(acl_BUILDDIR)/Makefile:
 
 acl_install: DESTDIR=$(BUILD_SYSROOT)
 
+acl_dist_install: DESTDIR=$(BUILD_SYSROOT)
+acl_dist_install:
+	$(RM) $(acl_BUILDDIR)_footprint
+	$(call RUN_DIST_INSTALL1,acl,$(acl_BUILDDIR)/Makefile)
+
 acl: $(acl_BUILDDIR)/Makefile
 	$(acl_MAKE)
 
@@ -482,6 +508,11 @@ lzo_defconfig $(lzo_BUILDDIR)/Makefile:
 	    --prefix= --enable-shared
 
 lzo_install: DESTDIR=$(BUILD_SYSROOT)
+
+lzo_dist_install: DESTDIR=$(BUILD_SYSROOT)
+lzo_dist_install:
+	echo "--enable-shared" > $(lzo_BUILDDIR)_footprint
+	$(call RUN_DIST_INSTALL1,lzo,$(lzo_BUILDDIR)/Makefile)
 
 lzo: $(lzo_BUILDDIR)/Makefile
 	$(lzo_MAKE)
@@ -503,6 +534,10 @@ e2fsprogs_defconfig $(e2fsprogs_BUILDDIR)/Makefile:
 
 e2fsprogs_install: DESTDIR=$(BUILD_SYSROOT)
 
+e2fsprogs_dist_install: DESTDIR=$(BUILD_SYSROOT)
+e2fsprogs_dist_install:
+	echo "$(addprefix --enable-,subset libuuid)" > $(e2fsprogs_BUILDDIR)_footprint
+	$(call RUN_DIST_INSTALL1,e2fsprogs,$(e2fsprogs_BUILDDIR)/Makefile)
 
 e2fsprogs: $(e2fsprogs_BUILDDIR)/Makefile
 	$(e2fsprogs_MAKE)
@@ -515,7 +550,7 @@ e2fsprogs_%: $(e2fsprogs_BUILDDIR)/Makefile
 # ubifs dep: lzo zlib uuid (e2fsprogs)
 # jfss2 dep: acl zlib
 #
-mtdutil_DIR=$(PKGDIR2)/mtd-util
+mtdutil_DIR=$(PKGDIR2)/mtd-utils
 mtdutil_BUILDDIR=$(BUILDDIR2)/mtdutil-$(APP_BUILD)
 mtdutil_MAKE=$(MAKE) DESTDIR=$(DESTDIR) -C $(mtdutil_BUILDDIR)
 mtdutil_INCDIR+=$(BUILD_SYSROOT)/include
@@ -530,6 +565,11 @@ mtdutil_defconfig $(mtdutil_BUILDDIR)/Makefile:
 	    LDFLAGS="$(addprefix -L,$(mtdutil_LIBDIR))"
 
 mtdutil_install: DESTDIR=$(BUILD_SYSROOT)
+
+mtdutil_dist_install: DESTDIR=$(BUILD_SYSROOT)
+mtdutil_dist_install:
+	echo "lzo zlib e2fsprogs acl --without-zstd" > $(mtdutil_BUILDDIR)_footprint
+	$(call RUN_DIST_INSTALL1,mtdutil,$(mtdutil_BUILDDIR)/Makefile)
 
 mtdutil: $(mtdutil_BUILDDIR)/Makefile
 	$(mtdutil_MAKE)
@@ -549,6 +589,12 @@ fdkaac_defconfig $(fdkaac_BUILDDIR)/Makefile:
 	  $(fdkaac_DIR)/configure --host=`$(CC) -dumpmachine` --prefix=
 
 fdkaac_install: DESTDIR=$(BUILD_SYSROOT)
+
+fdkaac_dist_install: DESTDIR=$(BUILD_SYSROOT)
+fdkaac_dist_install:
+	$(RM) $(fdkaac_BUILDDIR)_footprint
+	$(call RUN_DIST_INSTALL1,fdkaac,$(fdkaac_BUILDDIR)/Makefile)
+
 
 fdkaac: $(fdkaac_BUILDDIR)/Makefile
 	$(fdkaac_MAKE)
@@ -570,6 +616,11 @@ faad2_defconfig $(faad2_BUILDDIR)/Makefile:
 
 faad2_install: DESTDIR=$(BUILD_SYSROOT)
 
+faad2_dist_install: DESTDIR=$(BUILD_SYSROOT)
+faad2_dist_install:
+	$(RM) $(faad2_BUILDDIR)_footprint
+	$(call RUN_DIST_INSTALL1,faad2,$(faad2_BUILDDIR)/Makefile)
+
 faad2: $(faad2_BUILDDIR)/Makefile
 	$(faad2_MAKE)
 
@@ -582,11 +633,9 @@ ncursesw_DIR=$(PKGDIR2)/ncurses
 ncursesw_BUILDDIR=$(BUILDDIR2)/ncursesw-$(APP_BUILD)
 ncursesw_TINFODIR=/usr/share/terminfo
 
-# refine to comma saperated list to exec
-ncursesw_TINFO=ansi,ansi-m,color_xterm,linux,pcansi-m,rxvt-basic,vt52,vt100 \
-  vt102,vt220,xterm,screen,tmux-256color,screen-256color,xterm-256color
-ncursesw_TINFO2=$(subst $(SPACE),$(COMMA),$(sort $(subst $(COMMA),$(SPACE), \
-  $(ncursesw_TINFO))))
+# refine to comma saperated list when use in tic
+ncursesw_TINFO=ansi ansi-m color_xterm,linux,pcansi-m,rxvt-basic,vt52,vt100 \
+  vt102,vt220,xterm,tmux-256color,screen-256color,xterm-256color
 
 ncursesw_DEF_CFG=$(ncursesw_DIR)/configure --prefix= --with-shared \
   --with-termlib --with-ticlib --enable-widec --enable-pc-files \
@@ -596,13 +645,31 @@ ncursesw_MAKE=$(MAKE) DESTDIR=$(DESTDIR) -C $(ncursesw_BUILDDIR)
 ncursesw_host_install: DESTDIR=$(PROJDIR)/tool
 ncursesw_host_install: ncursesw_BUILDDIR=$(BUILDDIR2)/ncursesw-host
 ncursesw_host_install:
-	[ -d "$(ncursesw_BUILDDIR)" ] || $(MKDIR) $(ncursesw_BUILDDIR)
-	cd $(ncursesw_BUILDDIR) && $(ncursesw_DEF_CFG)
+	if [ ! -f $(ncursesw_BUILDDIR)/Makefile ]; then \
+	  ( [ -d "$(ncursesw_BUILDDIR)" ] || $(MKDIR) $(ncursesw_BUILDDIR) ) && \
+	  cd $(ncursesw_BUILDDIR) && $(ncursesw_DEF_CFG) --with-pkg-config=/lib; \
+	fi
 	$(ncursesw_MAKE) install
 	echo "INPUT(-lncursesw)" > $(DESTDIR)/lib/libcurses.so;
 	for i in ncurses form panel menu tinfo; do \
 	  echo "INPUT(-l$${i}w)" > $(DESTDIR)/lib/lib$${i}.so; \
 	done
+
+ncursesw_host_dist_install: DESTDIR=$(PROJDIR)/tool
+ncursesw_host_dist_install: ncursesw_BUILDDIR=$(BUILDDIR2)/ncursesw-host
+ncursesw_host_dist_install:
+	echo "$(ncursesw_DEF_CFG) --with-pkg-config=/lib" > $(ncursesw_BUILDDIR)_footprint
+	if ! md5sum -c "$(ncursesw_BUILDDIR).md5sum"; then \
+	  $(MAKE) DESTDIR=$(ncursesw_BUILDDIR)_destdir \
+	      ncursesw_host_install && \
+	  tar -cvf $(ncursesw_BUILDDIR).tar -C $(dir $(ncursesw_BUILDDIR)_destdir) \
+	      $(notdir $(ncursesw_BUILDDIR)_destdir) && \
+	  md5sum $(ncursesw_BUILDDIR).tar $(wildcard $(ncursesw_BUILDDIR)_footprint) $(ncursesw_BUILDDIR)/Makefile \
+	      > $(ncursesw_BUILDDIR).md5sum && \
+	  $(RM) $(ncursesw_BUILDDIR)_destdir; \
+	fi
+	[ -d "$(DESTDIR)" ] || $(MKDIR) $(DESTDIR)
+	tar -xvf $(ncursesw_BUILDDIR).tar --strip-components=1 -C $(DESTDIR)
 
 ncursesw_defconfig $(ncursesw_BUILDDIR)/Makefile:
 	[ -d $(ncursesw_BUILDDIR) ] || $(MKDIR) $(ncursesw_BUILDDIR)
@@ -622,41 +689,41 @@ ncursesw_install: $(ncursesw_BUILDDIR)/Makefile
 	  echo "INPUT(-l$${i}w)" > $(DESTDIR)/lib/lib$${i}.so; \
 	done
 
+ncursesw_dist_install: DESTDIR=$(BUILD_SYSROOT)
+ncursesw_dist_install:
+	echo "$(ncursesw_DEF_CFG) --disable-db-install --without-tests \
+	  --disable-stripping --without-manpages" > $(ncursesw_BUILDDIR)_footprint
+	$(call RUN_DIST_INSTALL1,ncursesw,$(ncursesw_BUILDDIR)/Makefile)
+
 # opt dep: [ -x $(PROJDIR)/tool/bin/tic ] || $(MAKE) ncursesw_host_install
 ncursesw_terminfo_install: DESTDIR=$(BUILD_SYSROOT)
+ncursesw_terminfo_install: tic=LD_LIBRARY_PATH=$(PROJDIR)/tool/lib \
+    TERMINFO=$(PROJDIR)/tool/$(ncursesw_TINFODIR) $(PROJDIR)/tool/bin/tic
+ncursesw_terminfo_install: ncursesw_TINFO2=$(subst $(SPACE),$(COMMA),$(sort \
+    $(subst $(COMMA),$(SPACE),$(ncursesw_TINFO))))
 ncursesw_terminfo_install:
-	if [ -x "$(PROJDIR)/tool/bin/tic" ]; then \
-	  { [ -d $(DESTDIR)/$(ncursesw_TINFODIR) ] || \
-	    $(MKDIR) $(DESTDIR)/$(ncursesw_TINFODIR); } && \
-	  LD_LIBRARY_PATH=$(PROJDIR)/tool/lib \
-	    TERMINFO=$(PROJDIR)/tool/$(ncursesw_TINFODIR) tic -s -1 -I \
-		-e'$(ncursesw_TINFO2)' $(ncursesw_DIR)/misc/terminfo.src \
-		> $(BUILDDIR)/terminfo.src; \
-	  LD_LIBRARY_PATH=$(PROJDIR)/tool/lib \
-	    TERMINFO=$(PROJDIR)/tool/$(ncursesw_TINFODIR) tic -s \
-	    -o $(DESTDIR)/$(ncursesw_TINFODIR) $(BUILDDIR)/terminfo.src; \
-	fi
+	[ -d $(DESTDIR)/$(ncursesw_TINFODIR) ] || $(MKDIR) $(DESTDIR)/$(ncursesw_TINFODIR)
+	$(tic) -s -1 -I -e'$(ncursesw_TINFO2)' $(ncursesw_DIR)/misc/terminfo.src \
+	    > $(BUILDDIR)/terminfo.src; \
+	$(tic) -s -o $(DESTDIR)/$(ncursesw_TINFODIR) $(BUILDDIR)/terminfo.src; \
 
-ncursesw_terminfo_dist_install: DESTDIR=$(BUILD_SYSROOT)
-ncursesw_terminfo_dist_install: ncursesw_terminfo_dist_key=$(BUILDDIR2)/$(APP_PLATFORM)_ncursesw_terminfo_dist_key
-ncursesw_terminfo_dist_install: ncursesw_terminfo_dist_md5sum=$(BUILDDIR2)/$(APP_PLATFORM)_ncursesw_terminfo_dist.md5sum
-ncursesw_terminfo_dist_install: ncursesw_terminfo_dist_tar=$(BUILDDIR2)/$(APP_PLATFORM)_ncursesw_terminfo_dist.tar
+ncursesw_terminfo_dist_install: DESTDIR=$(PROJDIR)/tool
+ncursesw_terminfo_dist_install: terminfo_BUILDDIR=$(BUILDDIR2)/ncursesw_terminfo-$(APP_BUILD)
 ncursesw_terminfo_dist_install:
-	if ! { echo "" > $(ncursesw_terminfo_dist_key); } || \
-	    ! { echo "-1 -I" >> $(ncursesw_terminfo_dist_key); } || \
-	    ! { echo "$(ncursesw_TINFO2)" >> $(ncursesw_terminfo_dist_key); } || \
-	    ! { du -bs $(PROJDIR)/tool/usr/share/terminfo >> $(ncursesw_terminfo_dist_key); } || \
-	    ! md5sum -c "$(ncursesw_terminfo_dist_md5sum)"; then \
-	  $(MAKE) DESTDIR=$(BUILDDIR2)/$(APP_PLATFORM)_ncursesw_terminfo_dist ncursesw_terminfo_install; \
-	  tar -cvf $(ncursesw_terminfo_dist_tar) -C $(BUILDDIR2) $(APP_PLATFORM)_ncursesw_terminfo_dist; \
-	  md5sum $(ncursesw_terminfo_dist_key) $(ncursesw_terminfo_dist_tar) \
-	      $(PROJDIR)/tool/bin/tic $(ncursesw_DIR)/misc/terminfo.src \
-		  > $(ncursesw_terminfo_dist_md5sum); \
-	  $(RM) $(BUILDDIR2)/$(APP_PLATFORM)_ncursesw_terminfo_dist; \
+	echo "tic -s -1 -I" > $(terminfo_BUILDDIR)_footprint
+	echo "$(ncursesw_DEF_CFG)" >> $(terminfo_BUILDDIR)_footprint
+	echo "$(ncursesw_TINFO)" >> $(terminfo_BUILDDIR)_footprint
+	if ! md5sum -c "$(terminfo_BUILDDIR).md5sum"; then \
+	  $(MAKE) DESTDIR=$(terminfo_BUILDDIR)_destdir \
+	      ncursesw_terminfo_install && \
+	  tar -cvf $(terminfo_BUILDDIR).tar -C $(dir $(terminfo_BUILDDIR)_destdir) \
+	      $(notdir $(terminfo_BUILDDIR)_destdir) && \
+	  md5sum $(terminfo_BUILDDIR).tar $(wildcard $(terminfo_BUILDDIR)_footprint) $(ncursesw_BUILDDIR)/Makefile \
+	      > $(terminfo_BUILDDIR).md5sum && \
+	  $(RM) $(terminfo_BUILDDIR)_destdir; \
 	fi
-	$(RM) $(ncursesw_terminfo_dist_key)
 	[ -d "$(DESTDIR)" ] || $(MKDIR) $(DESTDIR)
-	tar -xvf $(ncursesw_terminfo_dist_tar) --strip-components=1 -C $(DESTDIR)
+	tar -xvf $(terminfo_BUILDDIR).tar --strip-components=1 -C $(DESTDIR)
 
 ncursesw: $(ncursesw_BUILDDIR)/Makefile
 	$(ncursesw_MAKE)
@@ -677,6 +744,11 @@ libmnl_defconfig $(libmnl_BUILDDIR)/Makefile:
 	    --prefix=
 
 libmnl_install: DESTDIR=$(BUILD_SYSROOT)
+
+libmnl_dist_install: DESTDIR=$(BUILD_SYSROOT)
+libmnl_dist_install:
+	$(RM) $(libmnl_BUILDDIR)_footprint
+	$(call RUN_DIST_INSTALL1,libmnl,$(libmnl_BUILDDIR)/Makefile)
 
 libmnl: $(libmnl_BUILDDIR)/Makefile
 	$(libmnl_MAKE)
@@ -702,17 +774,9 @@ ethtool_defconfig $(ethtool_BUILDDIR)/Makefile:
 ethtool_install: DESTDIR=$(BUILD_SYSROOT)
 
 ethtool_dist_install: DESTDIR=$(BUILD_SYSROOT)
-ethtool_dist_install: ethtool_dist_md5sum=$(ethtool_BUILDDIR)/$(APP_PLATFORM)_dist.md5sum
-ethtool_dist_install: ethtool_dist_tar=$(ethtool_BUILDDIR)/$(APP_PLATFORM)_dist.tar
 ethtool_dist_install:
-	if ! md5sum -c "$(ethtool_dist_md5sum)"; then \
-	  $(MAKE) DESTDIR=$(ethtool_BUILDDIR)/$(APP_PLATFORM)_dist ethtool_install; \
-	  tar -cvf $(ethtool_dist_tar) -C $(ethtool_BUILDDIR) $(APP_PLATFORM)_dist; \
-	  md5sum $(ethtool_BUILDDIR)/Makefile $(ethtool_dist_tar) > $(ethtool_dist_md5sum); \
-	  $(RM) $(ethtool_BUILDDIR)/$(APP_PLATFORM)_dist; \
-	fi
-	[ -d "$(DESTDIR)" ] || $(MKDIR) $(DESTDIR)
-	tar -xvf $(ethtool_dist_tar) --strip-components=1 -C $(DESTDIR)
+	$(RM) $(ethtool_BUILDDIR)_footprint
+	$(call RUN_DIST_INSTALL1,ethtool,$(ethtool_BUILDDIR)/Makefile)
 
 ethtool: $(ethtool_BUILDDIR)/Makefile
 	$(ethtool_MAKE)
@@ -737,6 +801,11 @@ openssl_install: DESTDIR=$(BUILD_SYSROOT)
 openssl_install: $(openssl_BUILDDIR)/configdata.pm
 	$(openssl_MAKE) install_sw install_ssldirs
 
+openssl_dist_install: DESTDIR=$(BUILD_SYSROOT)
+openssl_dist_install:
+	echo "linux-generic64 --openssldir=/lib/ssl" > $(openssl_BUILDDIR)_footprint
+	$(call RUN_DIST_INSTALL1,openssl,$(openssl_BUILDDIR)/configdata.pm)
+
 openssl: $(openssl_BUILDDIR)/configdata.pm
 	$(openssl_MAKE)
 
@@ -757,6 +826,11 @@ libevent_defconfig $(libevent_BUILDDIR)/Makefile:
 
 libevent_install: DESTDIR=$(BUILD_SYSROOT)
 
+libevent_dist_install: DESTDIR=$(BUILD_SYSROOT)
+libevent_dist_install:
+	echo "--disable-openssl" > $(libevent_BUILDDIR)_footprint
+	$(call RUN_DIST_INSTALL1,libevent,$(libevent_BUILDDIR)/Makefile)
+
 libevent: $(libevent_BUILDDIR)/Makefile
 	$(libevent_MAKE)
 
@@ -764,8 +838,9 @@ libevent_%: $(libevent_BUILDDIR)/Makefile
 	$(libevent_MAKE) $(@:libevent_%=%)
 
 #------------------------------------
+# dep ncursesw libevent
 #
-tmux_DIR=$(PKGDIR2)/tmux-3.2a
+tmux_DIR=$(PKGDIR2)/tmux
 tmux_BUILDDIR=$(BUILDDIR2)/tmux-$(APP_BUILD)
 tmux_MAKE=$(MAKE) DESTDIR=$(DESTDIR) -C $(tmux_BUILDDIR)
 tmux_INCDIR=$(BUILD_SYSROOT)/include $(BUILD_SYSROOT)/include/ncursesw
@@ -779,6 +854,11 @@ tmux_defconfig $(tmux_BUILDDIR)/Makefile:
 	  CFLAGS="$(addprefix -I,$(tmux_INCDIR))"
 
 tmux_install: DESTDIR=$(BUILD_SYSROOT)
+
+tmux_dist_install: DESTDIR=$(BUILD_SYSROOT)
+tmux_dist_install:
+	$(RM) $(tmux_BUILDDIR)_footprint
+	$(call RUN_DIST_INSTALL1,tmux,$(tmux_BUILDDIR)/Makefile)
 
 tmux: $(tmux_BUILDDIR)/Makefile
 	$(tmux_MAKE)
@@ -806,17 +886,9 @@ alsautils_defconfig $(alsautils_BUILDDIR)/Makefile:
 alsautils_install: DESTDIR=$(BUILD_SYSROOT)
 
 alsautils_dist_install: DESTDIR=$(BUILD_SYSROOT)
-alsautils_dist_install: alsautils_dist_md5sum=$(alsautils_BUILDDIR)/$(APP_PLATFORM)_dist.md5sum
-alsautils_dist_install: alsautils_dist_tar=$(alsautils_BUILDDIR)/$(APP_PLATFORM)_dist.tar
 alsautils_dist_install:
-	if ! md5sum -c "$(alsautils_dist_md5sum)"; then \
-	  $(MAKE) DESTDIR=$(alsautils_BUILDDIR)/$(APP_PLATFORM)_dist alsautils_install; \
-	  tar -cvf $(alsautils_dist_tar) -C $(alsautils_BUILDDIR) $(APP_PLATFORM)_dist; \
-	  md5sum $(alsautils_BUILDDIR)/Makefile $(alsautils_dist_tar) > $(alsautils_dist_md5sum); \
-	  $(RM) $(alsautils_BUILDDIR)/$(APP_PLATFORM)_dist; \
-	fi
-	[ -d "$(DESTDIR)" ] || $(MKDIR) $(DESTDIR)
-	tar -xvf $(alsautils_dist_tar) --strip-components=1 -C $(DESTDIR)
+	$(RM) $(alsautils_BUILDDIR)_footprint
+	$(call RUN_DIST_INSTALL1,alsautils,$(alsautils_BUILDDIR)/Makefile)
 
 alsautil: $(alsautils_BUILDDIR)/Makefile
 	$(alsautils_MAKE)
@@ -848,17 +920,9 @@ endif
 libnl_install: DESTDIR=$(BUILD_SYSROOT)
 
 libnl_dist_install: DESTDIR=$(BUILD_SYSROOT)
-libnl_dist_install: libnl_dist_md5sum=$(libnl_BUILDDIR)/$(APP_PLATFORM)_dist.md5sum
-libnl_dist_install: libnl_dist_tar=$(libnl_BUILDDIR)/$(APP_PLATFORM)_dist.tar
 libnl_dist_install:
-	if ! md5sum -c "$(libnl_dist_md5sum)"; then \
-	  $(MAKE) DESTDIR=$(libnl_BUILDDIR)/$(APP_PLATFORM)_dist libnl_install; \
-	  tar -cvf $(libnl_dist_tar) -C $(libnl_BUILDDIR) $(APP_PLATFORM)_dist; \
-	  md5sum $(libnl_BUILDDIR)/Makefile $(libnl_dist_tar) > $(libnl_dist_md5sum); \
-	  $(RM) $(libnl_BUILDDIR)/$(APP_PLATFORM)_dist; \
-	fi
-	[ -d "$(DESTDIR)" ] || $(MKDIR) $(DESTDIR)
-	tar -xvf $(libnl_dist_tar) --strip-components=1 -C $(DESTDIR)
+	$(RM) $(libnl_BUILDDIR)_footprint
+	$(call RUN_DIST_INSTALL1,libnl,$(libnl_BUILDDIR)/Makefile)
 
 libnl: $(libnl_BUILDDIR)/Makefile
 	$(libnl_MAKE)
@@ -883,17 +947,6 @@ ff_CFGPARAM+=--enable-debug=
 endif
 
 ff_MAKE=$(MAKE) DESTDIR=$(DESTDIR) -C $(ff_BUILDDIR)
-
-# ff_configure $(ff_BUILDDIR)/Makefile:
-# 	[ -d "$(ff_BUILDDIR)" ] || $(MKDIR) $(ff_BUILDDIR)
-# 	cd $(ff_BUILDDIR) && \
-# 	  $(BUILD_PKGCFG_ENV) LD_LIBRARY_PATH=$(PROJDIR)/tool/lib \
-# 	    $(ff_DIR)/configure --target-os=linux \
-# 	    --cross_prefix=$(CROSS_COMPILE) --enable-cross-compile $(ff_CFGPARAM) \
-# 		--prefix=/ --disable-iconv --enable-pic --enable-shared \
-# 	    --enable-hardcoded-tables --enable-pthreads --enable-ffplay \
-# 	    --extra-cflags="$(addprefix -I,$(ff_INCDIR)) -D_REENTRANT" \
-# 	    --extra-ldflags="$(addprefix -L,$(ff_LIBDIR))"
 
 APP_PLATFORM_ff_defconfig:
 	[ -d "$(ff_BUILDDIR)" ] || $(MKDIR) $(ff_BUILDDIR)
@@ -921,17 +974,9 @@ ff_defconfig $(ff_BUILDDIR)/config.h:
 ff_install: DESTDIR=$(BUILD_SYSROOT)
 
 ff_dist_install: DESTDIR=$(BUILD_SYSROOT)
-ff_dist_install: ff_dist_md5sum=$(ff_BUILDDIR)/$(APP_PLATFORM)_dist.md5sum
-ff_dist_install: ff_dist_tar=$(ff_BUILDDIR)/$(APP_PLATFORM)_dist.tar
 ff_dist_install:
-	if ! md5sum -c "$(ff_dist_md5sum)"; then \
-	  $(MAKE) DESTDIR=$(ff_BUILDDIR)/$(APP_PLATFORM)_dist ff_install; \
-	  tar -cvf $(ff_dist_tar) -C $(ff_BUILDDIR) $(APP_PLATFORM)_dist; \
-	  md5sum $(ff_BUILDDIR)/config.h $(ff_dist_tar) > $(ff_dist_md5sum); \
-	  $(RM) $(ff_BUILDDIR)/$(APP_PLATFORM)_dist; \
-	fi
-	[ -d "$(DESTDIR)" ] || $(MKDIR) $(DESTDIR)
-	tar -xvf $(ff_dist_tar) --strip-components=1 -C $(DESTDIR)
+	$(RM) $(ff_BUILDDIR)_footprint
+	$(call RUN_DIST_INSTALL1,ff,$(ff_BUILDDIR)/config.h)
 
 ff: $(ff_BUILDDIR)/config.h
 	$(ff_MAKE)
@@ -956,6 +1001,11 @@ iw_defconfig $(iw_BUILDDIR)/Makefile:
 	$(CP) $(iw_DIR)/* $(iw_BUILDDIR)/
 
 iw_install: DESTDIR=$(BUILD_SYSROOT)
+
+iw_dist_install: DESTDIR=$(BUILD_SYSROOT)
+iw_dist_install:
+	$(RM) $(iw_BUILDDIR)_footprint
+	$(call RUN_DIST_INSTALL1,iw,$(iw_BUILDDIR)/Makefile)
 
 iw: | $(iw_BUILDDIR)/Makefile
 	$(iw_MAKE)
@@ -989,18 +1039,9 @@ wpasup_defconfig $(wpasup_BUILDDIR)/wpa_supplicant/.config:
 wpasup_install: DESTDIR=$(BUILD_SYSROOT)
 
 wpasup_dist_install: DESTDIR=$(BUILD_SYSROOT)
-wpasup_dist_install: wpasup_dist_md5sum=$(wpasup_BUILDDIR)/$(APP_PLATFORM)_dist.md5sum
-wpasup_dist_install: wpasup_dist_tar=$(wpasup_BUILDDIR)/$(APP_PLATFORM)_dist.tar
 wpasup_dist_install:
-	if ! md5sum -c "$(wpasup_dist_md5sum)"; then \
-	  $(MAKE) DESTDIR=$(wpasup_BUILDDIR)/$(APP_PLATFORM)_dist wpasup_install; \
-	  tar -cvf $(wpasup_dist_tar) -C $(wpasup_BUILDDIR) $(APP_PLATFORM)_dist; \
-	  md5sum $(wpasup_BUILDDIR)/wpa_supplicant/.config \
-	      $(wpasup_dist_tar) > $(wpasup_dist_md5sum); \
-	  $(RM) $(wpasup_BUILDDIR)/$(APP_PLATFORM)_dist; \
-	fi
-	[ -d "$(DESTDIR)" ] || $(MKDIR) $(DESTDIR)
-	tar -xvf $(wpasup_dist_tar) --strip-components=1 -C $(DESTDIR)
+	$(RM) $(wpasup_BUILDDIR)_footprint
+	$(call RUN_DIST_INSTALL1,wpasup,$(wpasup_BUILDDIR)/wpa_supplicant/.config)
 
 wpasup: $(wpasup_BUILDDIR)/wpa_supplicant/.config
 	$(wpasup_MAKE)
@@ -1081,13 +1122,36 @@ fftest1: APP_ATTR=$(APP_ATTR_ub20)
 fftest1:
 	[ -d "$(fftest1_BUILDDIR)" ] || $(MKDIR) $(fftest1_BUILDDIR)
 	gcc -o $(fftest1_BUILDDIR)/$@ -g -I$(BUILD_SYSROOT)/include \
-	  -L$(BUILD_SYSROOT)/lib -pthread -fPIC \
+	  -L$(BUILD_SYSROOT)/lib -pthread -fPIE \
 	  -Wl,--start-group \
 	    -Wl,--push-state,-Bdynamic \
 	      $(addprefix -l,$(fftest1_SO)) \
 	    -Wl,--pop-state \
 	    $(addprefix -l,$(fftest1_LIBS)) $(fftest1_dir)/*.c \
 	  -Wl,--end-group
+
+#------------------------------------
+#
+locale_BUILDDIR=$(BUILDDIR2)/locale-$(APP_BUILD)
+locale_localedef=I18NPATH=$(TOOLCHAIN_SYSROOT)/usr/share/i18n localedef
+locale_def?=C.UTF-8
+
+$(locale_BUILDDIR)/C.UTF-8: | $(locale_BUILDDIR)
+	$(locale_localedef) -i POSIX -f UTF-8 $@ 2>/dev/null || true "force pass"
+
+$(locale_BUILDDIR)/%: | $(locale_BUILDDIR)
+	$(locale_localedef) -i $(word 1,$(subst ., ,$(@:$(locale_BUILDDIR)/%=%))) \
+		-f $(word 2,$(subst ., ,$(@:$(locale_BUILDDIR)/%=%))) $@
+
+$(locale_BUILDDIR):
+	$(MKDIR) $(locale_BUILDDIR)
+
+locale: DESTDIR=$(BUILD_SYSROOT)
+locale: $(addprefix $(locale_BUILDDIR)/,$(locale_def))
+	[ -d $(DESTDIR)/usr/lib/locale ] || $(MKDIR) $(DESTDIR)/usr/lib/locale
+	cd $(locale_BUILDDIR) && \
+	  $(locale_localedef) --add-to-archive --prefix=$(DESTDIR) --replace \
+	    $(locale_def)
 
 #------------------------------------
 # dep: ub ub_tools linux_dtbs bb dtc
@@ -1105,9 +1169,10 @@ dist dist_sd:
 	$(MAKE) $(APP_PLATFORM)_$@
 
 dist_strip_known_sh_pattern=\.sh \.pl \.py c_rehash ncursesw6-config alsaconf \
-    $(addprefix usr/bin/,xtrace tzselect ldd sotruss catchsegv mtrace)
+    $(addprefix usr/bin/,xtrace tzselect ldd sotruss catchsegv mtrace) \
+	lib/firmware/.*
 dist_strip_known_sh_pattern2=$(subst $(SPACE),|,$(sort $(subst $(COMMA),$(SPACE), \
-    $(dist_strip_known_sh_pat))))
+    $(dist_strip_known_sh_pattern))))
 dist_strip:
 	@echo -e "$(ANSI_GREEN)Strip executable$(if $($(@)_log),$(COMMA) log to $($(@)_log))$(ANSI_NORMAL)"
 	@$(if $($(@)_log),echo "" >> $($(@)_log); date >> $($(@)_log))
@@ -1174,27 +1239,33 @@ bpi_dist: dist_compsize=0xb000000
 bpi_dist: dist_fdtaddr=0x4fa00000
 bpi_dist: dist_log=$(BUILDDIR)/dist_log-$(APP_PLATFORM).txt
 bpi_dist:
-	@[ -x $(PROJDIR)/tool/bin/dtc ] || $(MAKE) dtc_install
-	@[ -x $(PROJDIR)/tool/bin/mkimage ] || $(MAKE) ub_tools_install
-ifeq ("$(NB)","")
+	[ -d $(dir $(dist_log)) ] || $(MKDIR) $(dir $(dist_log))
 	@$(if $(dist_log),echo "" >> $(dist_log); date >> $(dist_log))
-	@$(if $(dist_log),echo "Start build packages" >> $(dist_log))
+	[ -x $(PROJDIR)/tool/bin/tic ] || $(MAKE) ncursesw_host_dist_install
+	[ -x $(PROJDIR)/tool/bin/mkimage ] || $(MAKE) ub_tools_install
+	[ -x $(PROJDIR)/tool/bin/dtc ] || $(MAKE) dtc_dist_install
+ifeq ("$(filter-out placeholder,$(NB))","")
 	$(MAKE) atf_bl31 crust_scp
-	$(MAKE) ub linux_Image.gz linux_dtbs linux_modules linux_headers_install \
-	    zlib_install
-	$(MAKE) libasound_dist_install ncursesw_install linux_modules_install \
-	    openssl_install libnl_dist_install
-	$(MAKE) alsautils_dist_install ff_dist_install bb_install \
-	    wpasup_dist_install iw_install libmnl_install ethtool_dist_install \
-		ncursesw_terminfo_dist_install
-	@$(if $(dist_log),echo "" >> $(dist_log); date >> $(dist_log))
-	@$(if $(dist_log),echo "Done build packages" >> $(dist_log))
+	$(MAKE) ub ub_envtools linux_Image.gz linux_dtbs linux_modules \
+	    linux_headers_install
+	@$(if $(dist_log),date >> $(dist_log); echo "Done build boot/kernel" >> $(dist_log))
+endif
+ifeq ("$(filter-out 2,$(NB))","")
+	$(MAKE) linux_modules_install zlib_dist_install libasound_dist_install \
+	    ncursesw_dist_install attr_dist_install
+	$(MAKE) alsautils_dist_install ff_dist_install bb_dist_install \
+	    openssl_install libnl_dist_install libmnl_dist_install \
+		ethtool_dist_install acl_dist_install lzo_dist_install \
+		e2fsprogs_dist_install fdkaac_dist_install
+	$(MAKE) wpasup_dist_install iw_install mtdutil_dist_install \
+	    ncursesw_terminfo_dist_install locale
+	@$(if $(dist_log),date >> $(dist_log); echo "Done build package" >> $(dist_log))
 endif
 	@echo -e "$(ANSI_GREEN)Install booting files$(ANSI_NORMAL)"
 	@[ -d $(dist_DIR)/boot ] || $(MKDIR) $(dist_DIR)/boot
 	@rsync -avv $(ub_BUILDDIR)/u-boot-sunxi-with-spl.bin \
-	  $(linux_BUILDDIR)/arch/arm64/boot/Image.gz $(dist_dtb) \
-	  $(dist_DIR)/boot/ $(if $(dist_log),&>> $(dist_log))
+	    $(linux_BUILDDIR)/arch/arm64/boot/Image.gz $(dist_dtb) \
+	    $(dist_DIR)/boot/ $(if $(dist_log),&>> $(dist_log))
 	@if [ -f "$(dist_dts)" ]; then \
 	  echo -e "$(ANSI_GREEN)Compile linux device tree$(ANSI_NORMAL)"; \
 	  $(call CPPDTS) $(addprefix -I,$(dist_DTINCDIR)) \
@@ -1220,7 +1291,9 @@ endif
 	fi
 	@echo "bootargs=console=ttyS0,115200n8 rootfstype=ext4,ext2 root=/dev/mmcblk2p2 rw rootwait" >> $(BUILDDIR)/uboot.env.txt
 	@echo "bootcmd=run loadkernel; run loadfdt; booti \$${loadaddr} - \$${fdtaddr}" >> $(BUILDDIR)/uboot.env.txt
-	@mkenvimage -s $(ub_env_size)  $(ub_env_redundand) -o $(dist_DIR)/boot/uboot.env $(BUILDDIR)/uboot.env.txt
+	@mkenvimage -s `sed -n -e "s/^\s*CONFIG_ENV_SIZE\s*=\s*\([0-9x]\)/\1/p" $(ub_BUILDDIR)/.config` \
+	    `grep -e ^\s*CONFIG_SYS_REDUNDAND_ENVIRONMENT\s*=\s*y\s* $(ub_BUILDDIR)/.config > /dev/null && echo -n "-r"` \
+		-o $(dist_DIR)/boot/uboot.env $(BUILDDIR)/uboot.env.txt
 	@echo -e "$(ANSI_GREEN)Install userland$(ANSI_NORMAL)"
 	@$(if $(dist_log),echo "" >> $(dist_log); date >> $(dist_log))
 	@$(if $(dist_log),echo "Start populate sysroot to rootfs" >> $(dist_log))
@@ -1257,14 +1330,15 @@ endif
 	@rsync -avv $(ap6212_DIR)/bpi/nvram_ap6212.txt \
 	    $(dist_DIR)/rootfs/lib/firmware/brcm/brcmfmac43430-sdio.txt \
 		$(if $(dist_log),&>> $(dist_log))
-	@if [ -e "/lib/firmware/ath9k_htc/htc_9271-1.4.0.fw" ]; then \
-	  echo -e "$(ANSI_GREEN)Install Atheros AR9271 firmware$(ANSI_NORMAL)"; \
-	  { [ -d $(dist_DIR)/rootfs/lib/firmware/ath9k_htc ] || \
-	    $(MKDIR) $(dist_DIR)/rootfs/lib/firmware/ath9k_htc; } && \
-	  rsync -avv /lib/firmware/ath9k_htc/htc_9271-1.4.0.fw \
-	      $(dist_DIR)/rootfs/lib/firmware/ath9k_htc/ \
-		  $(if $(dist_log),&>> $(dist_log)); \
-	fi
+	@rsync -avv $(ap6212_DIR)/bpi/bcm43438a1.hcd \
+	    $(dist_DIR)/rootfs/lib/firmware/brcm/BCM43430A1.hcd \
+		$(if $(dist_log),&>> $(dist_log))
+ifneq ("$(strip $(filter ath9k_htc,$(APP_ATTR)))","")
+	[ -d $(dist_DIR)/rootfs/lib/firmware/ath9k_htc ] || $(MKDIR) $(dist_DIR)/rootfs/lib/firmware/ath9k_htc
+	@rsync -avv /lib/firmware/ath9k_htc/htc_9271-1.4.0.fw \
+	    $(dist_DIR)/rootfs/lib/firmware/ath9k_htc/ \
+	    $(if $(dist_log),&>> $(dist_log))
+endif
 	@$(MAKE) dist_strip_DIR=$(dist_DIR)/rootfs/ dist_strip_log=$(dist_log) \
 	    dist_strip
 	@echo -e "$(ANSI_GREEN)Install prebuilt$(ANSI_NORMAL)"

@@ -1,6 +1,5 @@
 # Table of Contents <!-- omit in toc -->
-- [Introduction](#introduction)
-  - [Terminoligy / Abbr for this doc.](#terminoligy--abbr-for-this-doc)
+- [Terminoligy](#terminoligy)
   - [BananaPi M64](#bananapi-m64)
     - [Build](#build)
     - [Boot](#boot)
@@ -11,10 +10,7 @@
 <!-- grouping links -->
 
 
-# Introduction
-
-
-## Terminoligy / Abbr for this doc.
+# Terminoligy
 -   Project - Software project
 -   Source tree - The directory structure for this project
 -   Host - The machine used to build this project
