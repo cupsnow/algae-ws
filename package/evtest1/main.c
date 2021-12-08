@@ -28,6 +28,53 @@
 #define log_e(_args...) log_m("ERRORs ", ##_args)
 #define log_d(_args...) log_m("Debug ", ##_args)
 
+typedef struct {
+	void *addr;
+	size_t len, pa;
+} aloe_mmaddr_t;
+#define aloe_mmaddr_INITIALIZER {.addr = MAP_FAILED}
+
+static void aloe_file_munmap(aloe_mmaddr_t *mmaddr) {
+	if (mmaddr && mmaddr->addr != MAP_FAILED) {
+		munmap((void*)((unsigned long)mmaddr->addr - mmaddr->pa),
+				mmaddr->len + mmaddr->pa);
+	}
+}
+
+static int aloe_file_mmap(aloe_mmaddr_t *mmaddr, int fd, size_t offset, size_t len) {
+	int r;
+	struct stat fst;
+	aloe_mmaddr_t _mmaddr = {.addr = MAP_FAILED};
+
+	if (fstat(fd, &fst) == -1) {
+		r = errno;
+		jl_e("Get file stat: %s(%d)\n", strerror(r), r);
+		return r;
+	}
+	if (offset >= fst.st_size) {
+		r = ERANGE;
+		jl_e("Offset %u but size is %u\n", (unsigned)offset, (unsigned)fst.st_size);
+		return r;
+	}
+	if (len == (size_t)-1) {
+		_mmaddr.len = fst.st_size;
+	} else if (len > 0 && len + offset > fst.st_size) {
+		_mmaddr.len = fst.st_size - offset;
+	} else {
+		_mmaddr.len = len;
+	}
+	_mmaddr.pa = offset & (sysconf(_SC_PAGE_SIZE) - 1);
+	if ((_mmaddr.addr = mmap(NULL, _mmaddr.len + _mmaddr.pa, PROT_READ, MAP_PRIVATE, fd,
+			offset - _mmaddr.pa)) == MAP_FAILED) {
+		r = errno;
+		jl_e("Memory mapped file: %s(%d)\n", strerror(r), r);
+		return r;
+	}
+	_mmaddr.addr = (void*)((unsigned long)_mmaddr.addr + _mmaddr.pa);
+	memcpy(mmaddr, &_mmaddr, sizeof(_mmaddr));
+	return 0;
+}
+
 int aloe_local_socket_address(struct sockaddr_un *sa, socklen_t *sa_len,
 		const char *path) {
 	size_t path_size = strlen(path);
