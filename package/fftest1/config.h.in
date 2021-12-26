@@ -1,5 +1,11 @@
 /* config.h.in.  Generated from configure.ac by autoheader.  */
 
+/* debug build */
+#undef DEBUG
+
+/* Define to 1 if you have the <cJSON.h> header file. */
+#undef HAVE_CJSON_H
+
 /* Define to 1 if you have the <inttypes.h> header file. */
 #undef HAVE_INTTYPES_H
 

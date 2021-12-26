@@ -1,0 +1,4 @@
+#!/bin/bash
+
+rm -rf autom4te.cache build docs/html aclocal.m4 aloe_ev.doxyfile.bak compile \
+    config.h.in~ configure depcomp install-sh Makefile Makefile.in missing
