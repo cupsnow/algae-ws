@@ -30,18 +30,6 @@ static void* init(void) {
 	ctx->instanceId = instanceId++;
 	log_d("%s[%d]\n", mod_name, ctx->instanceId);
 
-	if ((ctx->fd_ctrl = aloe_local_socker_listener(NULL, NULL))
-
-	int aloe_local_socker_listener(struct sockaddr_un *sa, socklen_t *sa_len,
-			const char *path, int backlog)
-
-
-
-
-
-
-
-
 
 
 	return (void*)ctx;

@@ -9,7 +9,7 @@
 #define log_d(_args...) log_m("Debug ", ##_args)
 
  /** Minimal due time for select(), value in micro-seconds. */
-#define ALOE_EV_PREVENT_BUSY_WAITING 5000ul
+#define ALOE_EV_PREVENT_BUSY_WAITING 1001ul
 
 static aloe_ev_ctx_fd_t* fd_q_find(aloe_ev_ctx_fd_queue_t *q, int fd, char pop) {
 	aloe_ev_ctx_fd_t *ev_fd;
@@ -71,7 +71,7 @@ int aloe_local_socker_listener(const char *path, int backlog,
 	}
 	if ((fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
 		r = errno;
-		log_e("%s (AF_UNIX) socket, %s(%d)\n", strerror(r), r);
+		log_e("%s (AF_UNIX) socket, %s(%d)\n", path, strerror(r), r);
 		goto finally;
 	}
 	if ((r = aloe_local_socket_address(sa, sa_len, path)) != 0) {
@@ -80,12 +80,12 @@ int aloe_local_socker_listener(const char *path, int backlog,
 	unlink(path);
 	if (bind(fd, (struct sockaddr*)sa, *sa_len) < 0) {
 		r = errno;
-		log_e("%s (AF_UNIX) bind, %s(%d)\n", strerror(r), r);
+		log_e("%s (AF_UNIX) bind, %s(%d)\n", path, strerror(r), r);
 		goto finally;
 	}
 	if (listen(fd, backlog) < 0) {
 		r = errno;
-		log_e("%s (AF_UNIX) listen, %s(%d)\n", strerror(r), r);
+		log_e("%s (AF_UNIX) listen, %s(%d)\n", path, strerror(r), r);
 		goto finally;
 	}
 finally:

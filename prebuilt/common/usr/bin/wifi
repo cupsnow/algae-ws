@@ -1,0 +1,64 @@
+#!/bin/sh
+
+. /etc/init.d/func
+
+log_d () {
+  echo "$*"
+}
+
+log_e () {
+  echo "$*"
+}
+
+wphy=
+
+stop_svc () {
+  [ -n "`cmd_path iw`" ] || { log_e "miss iw"; return 1; }
+
+  kill_prog "wpa_supplicant" || { log_e "wpa remaining"; return 1; }
+  return 0
+}
+
+reload_wifi () {
+  /etc/init.d/wifi restart || { log_e "reload wifi"; return 1; }
+
+  local ct=10
+  while wphy=`iw_phy` && [ -z "$wphy" ] && [ $ct -gt 0 ]; do
+    echo "Waiting for wifi ready"
+    sleep 0.2
+    ct=$(( $ct - 1 ))
+  done
+  [ -n "$wphy" ] || { log_e "missing wphy"; return 1; }
+  return 0
+}
+
+start_wpa () {
+  echo "Starting wpa_supplicant ..."
+  wpa_supplicant -Dnl80211 -iwlan0 -c/etc/wpa_supplicant.conf -B >/dev/null || \
+    { log_e "start wpa"; exit 1; }
+
+  local ct=15
+  while state=`wpa_state` && [ "$state" != "COMPLETED" ] && [ $ct -gt 0 ]; do
+    echo "Waiting for WPA"
+    sleep 0.5
+    ct=$(( $ct - 1 ))
+  done
+  [ "$state" == "COMPLETED" ] || { log_e "WPA incomplete"; return 1; }
+  return 0
+}
+
+start_svc () {
+  udhcpc -i wlan0 -q
+
+}
+
+if [ "$1" == "test" ]; then
+  shift
+  "$@"
+  exit
+fi
+
+stop_svc || exit
+reload_wifi || exit
+start_wpa || exit
+start_svc || exit

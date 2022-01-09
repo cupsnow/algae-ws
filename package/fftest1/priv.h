@@ -25,6 +25,10 @@
  * @ingroup ALOE_EV_INTERNAL
  * @brief IO for socket or file.
  *
+ * @defgroup ALOE_EV_CFG
+ * @ingroup ALOE_EV_INTERNAL
+ * @brief Shared variable
+ *
  */
 
 #ifdef __cplusplus
@@ -38,6 +42,9 @@ extern "C" {
 #define aloe_trex "🦖" /**< Trex. */
 #define aloe_sauropod "🦕" /**< Sauropod. */
 #define aloe_lizard "🦎" /**< Lizard. */
+
+#define aloe_min(_a, _b) ((_a) <= (_b) ? (_a) : (_b))
+#define aloe_max(_a, _b) ((_a) >= (_b) ? (_a) : (_b))
 
 /** Stringify. */
 #define _aloe_stringify(_s) # _s
@@ -68,6 +75,14 @@ typedef struct aloe_fb_rec {
 	size_t lmt; /**< Data size. */
 	size_t pos; /**< Data start. */
 } aloe_fb_t;
+
+size_t aloe_fb_read(aloe_fb_t *fb, void *data, size_t sz);
+size_t aloe_fb_write(aloe_fb_t *fb, const void *data, size_t sz);
+int aloe_fb_expand(aloe_fb_t *fb, size_t cap, int retain);
+int aloe_vaprintf(aloe_fb_t *buf, ssize_t max, const char *fmt, va_list va)
+		__attribute__((format(printf, 3, 0)));
+int aloe_aprintf(aloe_fb_t *buf, ssize_t max, const char *fmt, ...)
+		__attribute__((format(printf, 3, 4)));
 
 typedef struct aloe_mod_rec {
 	const char *name;
@@ -211,13 +226,66 @@ typedef struct aloe_ev_ctx_rec {
 	aloe_ev_ctx_noti_queue_t spare_noti_q; /**< Queue for cached memory. */
 } aloe_ev_ctx_t;
 
-typedef struct appcfg_rec {
-	const char *ctrl_path;
-} appcfg_t;
-
-extern appcfg_t appcfg;
-
 /** @} ALOE_EV_IO */
+
+/** @addtogroup ALOE_EV_CFG
+ * @{
+ */
+
+typedef enum aloe_cfg_type_enum {
+	aloe_cfg_type_void = 0,
+	aloe_cfg_type_int,
+	aloe_cfg_type_uint,
+	aloe_cfg_type_long,
+	aloe_cfg_type_ulong,
+	aloe_cfg_type_double,
+	aloe_cfg_type_pointer,
+
+	aloe_cfg_type_data, /**< set( ,const void*, size_t) */
+	aloe_cfg_type_string, /**< set( ,const char*, ...) */
+} aloe_cfg_type_t;
+
+void* aloe_cfg_init(void);
+void aloe_cfg_destroy(void*);
+
+/**
+ *
+ * !key && type == aloe_cfg_type_void -> reset all cfg
+ *
+ * @param
+ * @param
+ * @param
+ */
+void* aloe_cfg_set(void*, const char*, aloe_cfg_type_t, ...);
+
+/**
+ *
+ * !key -> return first iter
+ *
+ * @param
+ * @param
+ */
+void* aloe_cfg_find(void*, const char*);
+
+/**
+ *
+ * !prev -> return first iter
+ *
+ * @param
+ * @param
+ */
+void* aloe_cfg_next(void*, void*);
+const char* aloe_cfg_key(void*);
+aloe_cfg_type_t aloe_cfg_type(void*);
+int aloe_cfg_int(void*);
+unsigned aloe_cfg_uint(void*);
+long aloe_cfg_long(void*);
+unsigned long aloe_cfg_ulong(void*);
+double aloe_cfg_double(void*);
+void* aloe_cfg_pointer(void*);
+const aloe_fb_t* aloe_cfg_fb(void*);
+
+/** @} ALOE_EV_CFG */
 
 #ifdef __cplusplus
 } // extern "C"

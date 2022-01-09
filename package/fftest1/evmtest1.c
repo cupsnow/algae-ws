@@ -9,13 +9,13 @@
 #define log_e(_args...) log_m("ERRORs ", ##_args)
 #define log_d(_args...) log_m("Debug ", ##_args)
 
-appcfg_t appcfg = {
-	.ctrl_path = "aloe_ev_ctrl"
-};
+#define CTRL_PATH "$evmtest1.ctrl"
 
 static struct {
 	unsigned quit: 1;
+
 } impl = {0};
+void *ev_ctx = NULL, *cfg_ctx = NULL;
 
 int _log_v(const char *lvl, const char *func_name, int lno, const char *fmt,
 		va_list va) {
@@ -93,7 +93,7 @@ static void help(int argc, char **argv) {
 		"    -t, --ctrl=<CTRL>  Control socket path (\"%s\")\n"
 		"\n",
 		((argc > 0) && argv && argv[0] ? argv[0] : "Program"),
-		appcfg.ctrl_path);
+		CTRL_PATH);
 }
 
 int main(int argc, char **argv) {
@@ -115,9 +115,15 @@ int main(int argc, char **argv) {
 			goto finally;
 		}
 		if (opt_op == 't') {
-			appcfg.ctrl_path = optarg;
+//			appcfg.ctrl_path = optarg;
 			continue;
 		}
+	}
+
+	if (!(cfg_ctx = aloe_cfg_init())) {
+		r = ENOMEM;
+		log_e("aloe_cfg_init\n");
+		goto finally;
 	}
 
 	if (!(ev_ctx = aloe_ev_init())) {
@@ -149,6 +155,9 @@ finally:
 	}
 	if (ev_ctx) {
 		aloe_ev_destroy(ev_ctx);
+	}
+	if (cfg_ctx) {
+		aloe_cfg_destroy(cfg_ctx);
 	}
 	return r;
 }
