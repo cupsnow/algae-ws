@@ -5,7 +5,7 @@
 #include "priv.h"
 
 #define log_m(_lvl, _fmt, _args...) printf(_lvl "%s #%d " _fmt, __func__, __LINE__, ##_args)
-#define log_e(_args...) log_m("ERRORs ", ##_args)
+#define log_e(_args...) log_m("ERROR ", ##_args)
 #define log_d(_args...) log_m("Debug ", ##_args)
 
  /** Minimal due time for select(), value in micro-seconds. */

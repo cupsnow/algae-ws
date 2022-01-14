@@ -4,7 +4,7 @@
 #include "priv.h"
 
 #define log_m(_lvl, _fmt, _args...) _log_m(_lvl, __func__, __LINE__, _fmt, ##_args)
-#define log_e(_args...) log_m("ERRORs ", ##_args)
+#define log_e(_args...) log_m("ERROR ", ##_args)
 #define log_d(_args...) log_m("Debug ", ##_args)
 
 extern int _log_m(const char *lvl, const char *func_name, int lno,

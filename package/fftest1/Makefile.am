@@ -2,8 +2,10 @@
 bin_PROGRAMS =
 
 AM_CPPFLAGS = -I$(top_srcdir)/include
-AM_LDFLAGS =
+AM_CFLAGS =
+
 LDADD = $(top_srcdir)/mod.ld
+AM_LDFLAGS =
 
 if WITH_DEBUG
 AM_CPPFLAGS += -g
@@ -19,5 +21,5 @@ endif
 
 bin_PROGRAMS += evmtest1
 evmtest1_SOURCES = evmtest1.c ev.c time.c misc.c cfg.c \
-    mod_cli.c
+    mod_cli.c mod_test1_buf1.c
 

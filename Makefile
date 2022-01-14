@@ -41,7 +41,7 @@ EXTRA_PATH+=$(TOOLCHAIN_PATH:%=%/bin) $(OR1K_TOOLCHAIN_PATH:%=%/bin)
 endif
 
 # executable path for sub-make
-export PATH:=$(call ENVPATH,$(PROJDIR)/tool/bin $(EXTRA_PATH))
+export PATH:=$(call ENVPATH,$(PROJDIR)/tool/bin $(EXTRA_PATH) $(PATH))
 # export LD_LIBRARY_PATH:=$(call ENVPATH,$(PROJDIR)/tool/lib $(LD_LIBRARY_PATH))
 
 BUILD_SYSROOT?=$(BUILDDIR)/sysroot-$(APP_PLATFORM)
@@ -1113,22 +1113,62 @@ mdns_%: | $(mdns_BUILDDIR)/mDNSPosix/Makefile
 
 #------------------------------------
 #
-fftest1_dir=$(PROJDIR)/package/fftest1
-fftest1_BUILDDIR=$(BUILDDIR)/fftest1-$(APP_BUILD)
-fftest1_LIBS+=z m
-fftest1_SO+=avutil swresample avcodec avformat
+#fftest1_dir=$(PROJDIR)/package/fftest1
+#fftest1_BUILDDIR=$(BUILDDIR)/fftest1-$(APP_BUILD)
+#fftest1_LIBS+=z m
+#fftest1_SO+=avutil swresample avcodec avformat
+#
+#fftest1: APP_ATTR=$(APP_ATTR_ub20)
+#fftest1:
+#	[ -d "$(fftest1_BUILDDIR)" ] || $(MKDIR) $(fftest1_BUILDDIR)
+#	gcc -o $(fftest1_BUILDDIR)/$@ -g -I$(BUILD_SYSROOT)/include \
+#	  -L$(BUILD_SYSROOT)/lib -pthread -fPIE \
+#	  -Wl,--start-group \
+#	    -Wl,--push-state,-Bdynamic \
+#	      $(addprefix -l,$(fftest1_SO)) \
+#	    -Wl,--pop-state \
+#	    $(addprefix -l,$(fftest1_LIBS)) $(fftest1_dir)/*.c \
+#	  -Wl,--end-group
+fftest1_dir=$(firstword $(wildcard $(PROJDIR)/package/fftest1 $(PROJDIR)/package/fftest1))
+fftest1_BUILDDIR?=$(BUILDDIR)/fftest1-ub20
+fftest1_CFGPARAM+=--enable-debug
+fftest1_MAKE=$(MAKE) DESTDIR=$(DESTDIR) $(fftest1_MAKEPARAM) $(fftest1_MAKEPARAM_$(APP_PLATFORM)) -C $(fftest1_BUILDDIR)
 
-fftest1: APP_ATTR=$(APP_ATTR_ub20)
-fftest1:
+fftest1_defconfig $(fftest1_BUILDDIR)/Makefile:
+	if [ -x $(fftest1_dir)/configure ]; then \
+	  true; \
+	elif [ -x $(fftest1_dir)/autogen.sh ]; then \
+	  cd $(fftest1_dir) && ./autogen.sh; \
+	else \
+	  cd $(fftest1_dir) && autoreconf -fiv; \
+	fi
 	[ -d "$(fftest1_BUILDDIR)" ] || $(MKDIR) $(fftest1_BUILDDIR)
-	gcc -o $(fftest1_BUILDDIR)/$@ -g -I$(BUILD_SYSROOT)/include \
-	  -L$(BUILD_SYSROOT)/lib -pthread -fPIE \
-	  -Wl,--start-group \
-	    -Wl,--push-state,-Bdynamic \
-	      $(addprefix -l,$(fftest1_SO)) \
-	    -Wl,--pop-state \
-	    $(addprefix -l,$(fftest1_LIBS)) $(fftest1_dir)/*.c \
-	  -Wl,--end-group
+	cd $(fftest1_BUILDDIR) && \
+	  CPPFLAGS="$(addprefix -I,$(BUILD_SYSROOT)/include)" \
+	  LDFLAGS="$(addprefix -L,$(BUILD_SYSROOT)/lib)" \
+	  $(BUILD_ENV) \
+	  $(fftest1_dir)/configure --host=`$(CC) -dumpmachine` --prefix= \
+	      $(fftest1_CFGPARAM) $(fftest1_CFGPARAM_$(APP_PLATFORM))
+
+fftest1_install: DESTDIR=$(BUILD_SYSROOT)
+
+fftest1_dist_install: DESTDIR=$(BUILD_SYSROOT)
+fftest1_dist_install:
+	$(RM) $(fftest1_BUILDDIR)_footprint
+	$(call RUN_DIST_INSTALL1,fftest1,$(fftest1_BUILDDIR)/Makefile)
+
+fftest1_distclean:
+	$(RM) $(fftest1_BUILDDIR)
+	if [ -x $(fftest1_dir)/distclean.sh ]; then \
+	  $(fftest1_dir)/distclean.sh; \
+	fi
+
+fftest1: $(fftest1_BUILDDIR)/Makefile
+	$(fftest1_MAKE) $(BUILDPARALLEL:%=-j%)
+
+fftest1_%: $(fftest1_BUILDDIR)/Makefile
+	$(fftest1_MAKE) $(BUILDPARALLEL:%=-j%) $(@:fftest1_%=%)
+
 
 #------------------------------------
 #

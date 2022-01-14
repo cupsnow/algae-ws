@@ -5,7 +5,7 @@
 #include "priv.h"
 
 #define log_m(_lvl, _fmt, _args...) _log_m(_lvl, __func__, __LINE__, _fmt, ##_args)
-#define log_e(_args...) log_m("ERRORs ", ##_args)
+#define log_e(_args...) log_m("ERROR ", ##_args)
 #define log_d(_args...) log_m("Debug ", ##_args)
 
 extern int _log_m(const char *lvl, const char *func_name, int lno,
@@ -14,9 +14,9 @@ extern void *ev_ctx;
 
 typedef struct aloe_cfg_rec {
 	aloe_cfg_type_t type;
-	aloe_fb_t fb_key;
+	aloe_buf_t fb_key;
 	union {
-		aloe_fb_t fb;
+		aloe_buf_t fb;
 	} val;
 	TAILQ_ENTRY(aloe_cfg_rec) qent;
 	RB_ENTRY(aloe_cfg_rec) rbent;
@@ -48,7 +48,7 @@ static aloe_cfg_t* cfg_rb_find(aloe_cfg_rbtree_t *rbtree, const char *_key) {
 static void cfg_reset_val(aloe_cfg_t *cfg) {
 	if (cfg->type == aloe_cfg_type_data ||
 			cfg->type == aloe_cfg_type_string) {
-		aloe_fb_t *fb = (aloe_fb_t*)&cfg->val;
+		aloe_buf_t *fb = (aloe_buf_t*)&cfg->val;
 		if (fb->data) free(fb->data);
 	}
 	cfg->type = aloe_cfg_type_void;
@@ -90,30 +90,28 @@ static int cfg_set_val(aloe_cfg_t *cfg, aloe_cfg_type_t type, va_list va) {
 	}
 	case aloe_cfg_type_data: {
 		/* set( ,const void*, size_t) */
-		aloe_fb_t *fb = (aloe_fb_t*)&cfg->val;
+		aloe_buf_t *buf = (aloe_buf_t*)&cfg->val;
 		const void *data = va_arg(va, const void*);
 		size_t sz;
 
 		if (!data) {
-			fb->lmt = 0;
+			buf->lmt = 0;
 			break;
 		}
 		sz = va_arg(va, size_t);
-		if (aloe_fb_expand(fb, sz + 1, 0) != 0) return ENOMEM;
-		memcpy(fb->data, data, sz);
-		((char*)fb->data)[fb->lmt = sz] = '\0';
+		if (aloe_buf_expand(buf, sz + 1, 0) != 0) return ENOMEM;
+		memcpy(buf->data, data, sz);
+		((char*)buf->data)[buf->lmt = sz] = '\0';
 		break;
 	}
 	case aloe_cfg_type_string: {
 		/* set( ,const char*, ...) */
-		aloe_fb_t *fb = (aloe_fb_t*)&cfg->val;
+		aloe_buf_t *buf = (aloe_buf_t*)&cfg->val;
 		const void *fmt = va_arg(va, const void*);
 
-		if (!fmt) {
-			fb->lmt = 0;
-			break;
-		}
-		if (aloe_vaprintf(fb, -1, fmt, va) < 0) return ENOMEM;
+		aloe_buf_clear(buf);
+		if (aloe_buf_aprintf(buf, -1, fmt, va) < 0) return ENOMEM;
+		aloe_buf_flip(buf);
 		break;
 	}
 	} /* switch (type) */
@@ -180,7 +178,8 @@ void* aloe_cfg_set(void *_ctx, const char *key, aloe_cfg_type_t type, ...) {
 		return NULL;
 	}
 
-	if (!flag.cfg_rb_inq && aloe_aprintf(&cfg->fb_key, -1, "%s", key) <= 0) {
+	aloe_buf_clear(&cfg->fb_key);
+	if (!flag.cfg_rb_inq && aloe_buf_aprintf(&cfg->fb_key, -1, "%s", key) <= 0) {
 		log_e("Failed set cfg key\n");
 		cfg_free(cfg);
 		return NULL;
@@ -243,6 +242,6 @@ void* aloe_cfg_pointer(void *_cfg) {
 	return *(void**)&((aloe_cfg_t*)_cfg)->val;
 }
 
-const aloe_fb_t* aloe_cfg_fb(void *_cfg) {
-	return (const aloe_fb_t*)&((aloe_cfg_t*)_cfg)->val;
+const aloe_buf_t* aloe_cfg_data(void *_cfg) {
+	return (const aloe_buf_t*)&((aloe_cfg_t*)_cfg)->val;
 }

@@ -69,19 +69,84 @@ extern "C" {
 #endif
 
 /** Generic buffer holder. */
-typedef struct aloe_fb_rec {
+typedef struct aloe_buf_rec {
 	void *data; /**< Memory pointer. */
 	size_t cap; /**< Memory capacity. */
 	size_t lmt; /**< Data size. */
 	size_t pos; /**< Data start. */
-} aloe_fb_t;
+} aloe_buf_t;
 
-size_t aloe_fb_read(aloe_fb_t *fb, void *data, size_t sz);
-size_t aloe_fb_write(aloe_fb_t *fb, const void *data, size_t sz);
-int aloe_fb_expand(aloe_fb_t *fb, size_t cap, int retain);
-int aloe_vaprintf(aloe_fb_t *buf, ssize_t max, const char *fmt, va_list va)
-		__attribute__((format(printf, 3, 0)));
-int aloe_aprintf(aloe_fb_t *buf, ssize_t max, const char *fmt, ...)
+/**
+ * fb.pos: Start of valid data
+ * fb.lmt: Size of valid data
+ *
+ * @param fb
+ * @param data
+ * @param sz
+ * @return
+ */
+size_t aloe_rinbuf_read(aloe_buf_t *buf, void *data, size_t sz);
+
+/**
+ * fb.pos: Start of spare
+ * fb.lmt: Size of valid data
+ *
+ * @param fb
+ * @param data
+ * @param sz
+ * @return
+ */
+size_t aloe_rinbuf_write(aloe_buf_t *buf, const void *data, size_t sz);
+
+#define aloe_buf_clear(_buf) do {(_buf)->lmt = (_buf)->cap; (_buf)->pos = 0;} while (0)
+#define aloe_buf_flip(_buf) do {(_buf)->lmt = (_buf)->pos; (_buf)->pos = 0;} while (0)
+
+void aloe_buf_shift_left(aloe_buf_t *buf, size_t offset);
+
+typedef enum aloe_buf_flag_enum {
+	aloe_buf_flag_none = 0,
+	aloe_buf_flag_retain_rinbuf,
+	aloe_buf_flag_retain_index,
+} aloe_buf_flag_t;
+
+/**
+ *
+ * aloe_buf_flag_retain_pos will update lmt if lmt == cap
+ *
+ * @param buf
+ * @param cap
+ * @param retain
+ * @return
+ */
+int aloe_buf_expand(aloe_buf_t *buf, size_t cap, aloe_buf_flag_t retain);
+
+/**
+ *
+ * Update buf index when all fmt fulfill.
+ *
+ * @param buf
+ * @param fmt
+ * @param va
+ * @return
+ */
+int aloe_buf_vprintf(aloe_buf_t *buf, const char *fmt, va_list va)
+		__attribute__((format(printf, 2, 0)));
+int aloe_buf_printf(aloe_buf_t *buf, const char *fmt, ...)
+		__attribute__((format(printf, 2, 3)));
+
+/**
+ *
+ * Malloc with max and buf.lmt == cap
+ *
+ * @param buf
+ * @param max
+ * @param fmt
+ * @param va
+ * @return
+ */
+int aloe_buf_vaprintf(aloe_buf_t *buf, ssize_t max, const char *fmt,
+		va_list va) __attribute__((format(printf, 3, 0)));
+int aloe_buf_aprintf(aloe_buf_t *buf, ssize_t max, const char *fmt, ...)
 		__attribute__((format(printf, 3, 4)));
 
 typedef struct aloe_mod_rec {
@@ -283,7 +348,7 @@ long aloe_cfg_long(void*);
 unsigned long aloe_cfg_ulong(void*);
 double aloe_cfg_double(void*);
 void* aloe_cfg_pointer(void*);
-const aloe_fb_t* aloe_cfg_fb(void*);
+const aloe_buf_t* aloe_cfg_data(void*);
 
 /** @} ALOE_EV_CFG */
 
