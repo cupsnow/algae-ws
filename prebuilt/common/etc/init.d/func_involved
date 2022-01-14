@@ -3,6 +3,51 @@
 func_involved="$(( $func_involved + 1 ))"
 [ $func_involved -le 1 ] || echo "func_involved: $func_involved"
 
+# echo "finding in \$path: `cmd_path iw`"
+#
+cmd_path () {
+  type $1 | sed -n "s/$1\s*is\s*\(.*\)/\1/p"
+}
+
+# phy=`iw_phy` && echo "Wifi deivce: $phy"
+#
+iw_phy () {
+  iw dev 2>/dev/null | sed -n "s/^phy#\(\d*\)/phy\1/p"
+}
+
+# state=`wpa_state` && [ "$state" == "COMPLETED" ] && echo "WPA ready"
+#
+wpa_state () {
+  wpa_cli status 2>/dev/null | sed -n "s/^wpa_state\s*=\s*\(.*\)/\1/p"
+}
+
+as_num () {
+  _priv_num=`printf "%d" $1 2>/dev/null` && echo "$_priv_num"
+}
+
+# kill_prog "wpa_supplicant|udhcpc"
+# return true when all killed
+#
+kill_prog () {
+  _priv_pat="$*"
+  _priv_pid=
+  pgrep -x $_priv_pat | while read _priv_pid; do
+    kill $_priv_pid
+  done
+
+  pgrep -x $_priv_pat &>/dev/null || return 0
+
+  _priv_ct=5
+  while [ $_priv_ct -gt 0 ]; do
+#   echo "Checking worker out (countdown $_priv_ct)"
+    sleep 0.3
+    pgrep -x $_priv_pat &>/dev/null || return 0
+    _priv_ct=$(( $_priv_ct - 1 ))
+  done
+  return 1
+}
+
+
 # daemon [start|stop] <PROG> [ARGS...]
 # Start PROG when not running or kill all instance
 #
@@ -33,18 +78,3 @@ daemon () {
     ;;
   esac
 }
-
-# lo [start]
-lo () {
-  lo_addr=127.0.0.1
-
-  case "$1" in
-  "start")
-    ifconfig lo up ${lo_addr} || { echo "ifconfig lo"; return 1; }
-    route add -net ${lo_addr} netmask 255.0.0.0 lo || { echo "route add"; return 1; }
-    ;;
-  *)
-    ;;
-  esac
-}
-

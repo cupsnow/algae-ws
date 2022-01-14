@@ -1,5 +1,8 @@
 /* config.h.in.  Generated from configure.ac by autoheader.  */
 
+/* Define to 1 if you have the <cJSON.h> header file. */
+#undef HAVE_CJSON_H
+
 /* Define to 1 if you have the <inttypes.h> header file. */
 #undef HAVE_INTTYPES_H
 
@@ -68,6 +71,12 @@
 
 /* Version number of package */
 #undef VERSION
+
+/* build with debug */
+#undef WITH_DEBUG
+
+/* build with ffmpeg */
+#undef WITH_FFMPEG
 
 /* Define to `unsigned int' if <sys/types.h> does not define. */
 #undef size_t

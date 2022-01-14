@@ -1,0 +1,79 @@
+#!/bin/sh
+
+. /etc/init.d/func
+
+show_help ( ) {
+cat <<-ENDHELP
+USAGE
+  $(basename $0) [OPTIONS]
+
+DESCRIPTION
+    Recording while play the input file or the recorded data.
+
+OPTIONS
+  -h         Show this help
+  -x         Kill ffmpeg, aplay and arecord
+  -r <RATE>  Set sample rate
+  -f <FMT>   Set sample format
+  -t <FTYPE> File format
+  -o <PATH>  File to save
+  -d <DUR>   Duration
+  -p <PATH>  Input file to play, needs file to save
+
+ENDHELP
+}
+
+while getopts ":hxr:t:f:o:d:p:" _priv_opt; do
+  echo "opt: $_priv_opt"
+  case "$_priv_opt" in
+  x)
+    kill_prog "ffmpeg|aplay|arecord"
+    exit
+    ;;
+  h)
+    show_help
+    exit 1
+    ;;
+  r)
+    rate="`as_num $OPTARG`"
+    ;;
+  f)
+    fmt="$OPTARG"
+    ;;
+  t)
+    ftype="$OPTARG"
+    ;;
+  o)
+    fout="$OPTARG"
+    ;;
+  d)
+    dur="`as_num $OPTARG`"
+    ;;
+  p)
+    fin="$OPTARG"
+    ;;
+  :)
+    ;;
+  esac
+done
+
+rate=${rate:-48000}
+fmt=${fmt:-S32_LE}
+ftype=${ftype:-wav}
+[ -n "$fin" ] && [ -z "$fout" ] && fout="spk_latency"
+
+arg1="-r ${rate} -f ${fmt} -t ${ftype} -c 2"
+
+if [ -n "$fin" ]; then
+  ( ffmpeg -i "$fin" -f wav - | aplay ) &
+  arecord -D hw:1,0 ${arg1} ${dur:+-d $dur} -v \
+      ${fout}_${rate}_${fmt}.${ftype}
+  $0 -x
+elif [ -n "$fout" ]; then
+  arecord -D hw:1,0 ${arg1} ${dur:+-d $dur} | \
+    tee ${fout}_${rate}_${fmt}.${ftype} | \
+    aplay ${arg1} -vv
+else
+  arecord -D hw:1,0 ${arg1} ${dur:+-d $dur} | \
+    aplay ${arg1} -vv
+fi

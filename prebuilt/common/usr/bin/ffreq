@@ -1,0 +1,16 @@
+#!/bin/sh
+
+num () {
+  if [ -n "$1" ] && freq=`printf "%d" $1 2>/dev/null`; then
+        echo "$freq"
+  fi
+}
+
+freq="$(num $1)"
+if [ -n "$freq" ]; then
+  shift
+else
+  freq=1000
+fi
+
+ffmpeg -f lavfi -i "sine=frequency=${freq}:sample_rate=44100" -c:a pcm_s16le -f wav $*
