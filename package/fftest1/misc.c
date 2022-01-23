@@ -89,7 +89,7 @@ int aloe_buf_printf(aloe_buf_t *buf, const char *fmt, ...) {
 
 int aloe_buf_vaprintf(aloe_buf_t *buf, ssize_t max, const char *fmt,
 		va_list va) {
-	int r, marked;
+	int r;
 
 	if (!fmt || !fmt[0]) return 0;
 

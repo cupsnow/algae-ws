@@ -61,7 +61,6 @@ static void cfg_free(aloe_cfg_t *cfg) {
 }
 
 static int cfg_set_val(aloe_cfg_t *cfg, aloe_cfg_type_t type, va_list va) {
-	int r;
 
 	switch (type) {
 	default:
@@ -134,12 +133,12 @@ void aloe_cfg_destroy(void *_ctx) {
 	aloe_cfg_ctx_t *ctx = (aloe_cfg_ctx_t*)_ctx;
 	aloe_cfg_t *cfg;
 
-	while (cfg = TAILQ_FIRST(&ctx->spare_q)) {
+	while ((cfg = TAILQ_FIRST(&ctx->spare_q))) {
 		TAILQ_REMOVE(&ctx->spare_q, cfg, qent);
 		cfg_free(cfg);
 	}
 
-	while (cfg = RB_MIN(aloe_cfg_rbtree_rec, &ctx->cfg_rb)) {
+	while ((cfg = RB_MIN(aloe_cfg_rbtree_rec, &ctx->cfg_rb))) {
 		RB_REMOVE(aloe_cfg_rbtree_rec, &ctx->cfg_rb, cfg);
 		cfg_free(cfg);
 	}

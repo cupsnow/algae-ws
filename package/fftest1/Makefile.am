@@ -3,11 +3,11 @@ bin_PROGRAMS =
 
 AM_CPPFLAGS = -I$(top_srcdir)/include
 AM_CFLAGS =
-
-LDADD = $(top_srcdir)/mod.ld
 AM_LDFLAGS =
+LDADD = 
+LDADD += $(top_srcdir)/mod.ld
 
-if WITH_DEBUG
+if ENABLE_DEBUG
 AM_CPPFLAGS += -g
 else
 AM_CPPFLAGS += -O -ffunction-sections -fdata-sections
@@ -20,6 +20,6 @@ fftest1_SOURCES = fftest1.c
 endif
 
 bin_PROGRAMS += evmtest1
-evmtest1_SOURCES = evmtest1.c ev.c time.c misc.c cfg.c \
+evmtest1_SOURCES = evmtest1.cpp ev.c time.c misc.c cfg.c \
     mod_cli.c mod_test1_buf1.c
 

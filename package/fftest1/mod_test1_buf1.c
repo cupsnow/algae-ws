@@ -110,7 +110,6 @@ finally:
 }
 
 static void* init(void) {
-	int r;
 	ctx_t *ctx;
 
 	if ((ctx = malloc(sizeof(*ctx))) == NULL) {
@@ -136,6 +135,7 @@ static int ioctl(void *_ctx, void *args) {
 	ctx_t *ctx = (ctx_t*)_ctx;
 
 	log_d("%s[%d]\n", mod_name, ctx->instanceId);
+	return 0;
 }
 
 const aloe_mod_t mod_test1_buf1 = {.name = mod_name, .init = &init, .destroy =

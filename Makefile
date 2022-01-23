@@ -1113,61 +1113,61 @@ mdns_%: | $(mdns_BUILDDIR)/mDNSPosix/Makefile
 
 #------------------------------------
 #
-#fftest1_dir=$(PROJDIR)/package/fftest1
-#fftest1_BUILDDIR=$(BUILDDIR)/fftest1-$(APP_BUILD)
-#fftest1_LIBS+=z m
-#fftest1_SO+=avutil swresample avcodec avformat
-#
-#fftest1: APP_ATTR=$(APP_ATTR_ub20)
-#fftest1:
-#	[ -d "$(fftest1_BUILDDIR)" ] || $(MKDIR) $(fftest1_BUILDDIR)
-#	gcc -o $(fftest1_BUILDDIR)/$@ -g -I$(BUILD_SYSROOT)/include \
-#	  -L$(BUILD_SYSROOT)/lib -pthread -fPIE \
-#	  -Wl,--start-group \
-#	    -Wl,--push-state,-Bdynamic \
-#	      $(addprefix -l,$(fftest1_SO)) \
-#	    -Wl,--pop-state \
-#	    $(addprefix -l,$(fftest1_LIBS)) $(fftest1_dir)/*.c \
-#	  -Wl,--end-group
-fftest1_dir=$(firstword $(wildcard $(PROJDIR)/package/fftest1 $(PROJDIR)/package/fftest1))
-fftest1_BUILDDIR?=$(BUILDDIR)/fftest1-ub20
-fftest1_CFGPARAM+=--enable-debug
-fftest1_MAKE=$(MAKE) DESTDIR=$(DESTDIR) $(fftest1_MAKEPARAM) $(fftest1_MAKEPARAM_$(APP_PLATFORM)) -C $(fftest1_BUILDDIR)
+fftest1_bindir?=/bin
+fftest1_CFGPARAM_$(APP_PLATFORM)+=--bindir=$(fftest1_bindir)
+#fftest1_CFGPARAM_$(APP_PLATFORM)+=CFLAGS="-O0"
+fftest1_CFGPARAM_ub20+=--enable-debug DATA_PREFIX="./"
 
-fftest1_defconfig $(fftest1_BUILDDIR)/Makefile:
-	if [ -x $(fftest1_dir)/configure ]; then \
-	  true; \
-	elif [ -x $(fftest1_dir)/autogen.sh ]; then \
-	  cd $(fftest1_dir) && ./autogen.sh; \
-	else \
-	  cd $(fftest1_dir) && autoreconf -fiv; \
-	fi
-	[ -d "$(fftest1_BUILDDIR)" ] || $(MKDIR) $(fftest1_BUILDDIR)
-	cd $(fftest1_BUILDDIR) && \
-	  CPPFLAGS="$(addprefix -I,$(BUILD_SYSROOT)/include)" \
-	  LDFLAGS="$(addprefix -L,$(BUILD_SYSROOT)/lib)" \
-	  $(BUILD_ENV) \
-	  $(fftest1_dir)/configure --host=`$(CC) -dumpmachine` --prefix= \
-	      $(fftest1_CFGPARAM) $(fftest1_CFGPARAM_$(APP_PLATFORM))
-
-fftest1_install: DESTDIR=$(BUILD_SYSROOT)
-
-fftest1_dist_install: DESTDIR=$(BUILD_SYSROOT)
-fftest1_dist_install:
-	$(RM) $(fftest1_BUILDDIR)_footprint
-	$(call RUN_DIST_INSTALL1,fftest1,$(fftest1_BUILDDIR)/Makefile)
+$(eval $(call AC_BUILD3_HEAD,fftest1 $(PROJDIR)/package/fftest1 $(BUILDDIR2)/fftest1-$(APP_BUILD)))
 
 fftest1_distclean:
 	$(RM) $(fftest1_BUILDDIR)
-	if [ -x $(fftest1_dir)/distclean.sh ]; then \
-	  $(fftest1_dir)/distclean.sh; \
+	if [ -x $(fftest1_DIR)/distclean.sh ]; then \
+	  $(fftest1_DIR)/distclean.sh; \
 	fi
 
-fftest1: $(fftest1_BUILDDIR)/Makefile
-	$(fftest1_MAKE) $(BUILDPARALLEL:%=-j%)
+#fftest1_install: fftest1_cgi_install
 
-fftest1_%: $(fftest1_BUILDDIR)/Makefile
-	$(fftest1_MAKE) $(BUILDPARALLEL:%=-j%) $(@:fftest1_%=%)
+fftest1_cgi_install: DESTDIR=$(BUILD_SYSROOT)
+fftest1_cgi_install:
+	[ -d $(DESTDIR)/var/cgi-bin ] || $(MKDIR) $(DESTDIR)/var/cgi-bin
+	for i in fftest1_fwupd.cgi; do \
+	  [ -e $(DESTDIR)/var/cgi-bin/$${i} ] || ln -sf ../../$(fftest1_bindir)/fftest1-cgi $(DESTDIR)/var/cgi-bin/$${i}; \
+	done
+
+# DESTDIR=`pwd`/build/sysroot-ub20 LD_LIBRARY_PATH=`pwd`/build/sysroot-ub20/lib:`pwd`/build/sysroot-ub20/usr/lib build/sysroot-ub20/sbin/lighttpd -f `pwd`/build/sysroot-ub20/etc/lighttpd.conf -m `pwd`/build/sysroot-ub20/lib -D
+fftest1_host: DESTDIR=$(BUILD_SYSROOT)
+fftest1_host:
+	[ -d "$(DESTDIR)/var/www" ] || $(MKDIR) $(DESTDIR)/var/www
+	ln -sf $(fftest1_DIR)/test/fwupd.html $(DESTDIR)/var/www/
+	[ -d "$(DESTDIR)/etc" ] || $(MKDIR) $(DESTDIR)/etc
+	[ -e $(DESTDIR)/etc/lighttpd.conf ] || ln -sf $(fftest1_DIR)/test/lighttpd.conf $(DESTDIR)/etc/
+	$(MAKE) fftest1_cgi_install
+	[ -d "$(DESTDIR)/media" ] || $(MKDIR) $(DESTDIR)/media
+	[ -e $(DESTDIR)/media/ota-host.tar.gz ] || ln -sf $(PROJDIR)/destdir/ota.tar.gz $(DESTDIR)/media/ota-host.tar.gz
+	[ -e $(DESTDIR)/media/sa7715 ] || ln -sf $(PROJDIR) $(DESTDIR)/media/sa7715
+	for i in var/run; do \
+	  [ -d "$(DESTDIR)/$${i}" ] || $(MKDIR) $(DESTDIR)/$${i}; \
+	done
+
+fftest1_testenv: DESTDIR=$(fftest1_BUILDDIR)
+fftest1_testenv:
+	for i in media var/run var/cgi-bin; do \
+	  [ -d "$(DESTDIR)/$${i}" ] || $(MKDIR) $(DESTDIR)/$${i}; \
+	done
+	for i in var/www lighttpd.conf run-lighttpd.sh; do \
+	  [ -e $(DESTDIR)/$${i} ] || ln -sf $(fftest1_DIR)/test/$${i} $(DESTDIR)/$$(dirname $${i}); \
+	done
+	@echo "Install cgi"
+	for i in fftest1_fwupd.cgi; do \
+	  [ -e $(DESTDIR)/var/cgi-bin/$${i} ] || ln -sf $(DESTDIR)/fftest1-cgi $(DESTDIR)/var/cgi-bin/$${i}; \
+	done
+	$(RM) $(DESTDIR)/media/* $(DESTDIR)/var/run/*
+ifneq ("$(strip $(filter ub20,$(APP_PLATFORM)))","")
+	[ -e $(PROJDIR)/destdir/ota.tar.gz ] && $(CP) $(PROJDIR)/destdir/ota.tar.gz $(DESTDIR)/media/
+endif
+
+$(eval $(call AC_BUILD3_FOOT,fftest1))
 
 
 #------------------------------------

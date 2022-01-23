@@ -17,8 +17,10 @@ static struct {
 } impl = {0};
 void *ev_ctx = NULL, *cfg_ctx = NULL;
 
-int _log_v(const char *lvl, const char *func_name, int lno, const char *fmt,
-		va_list va) {
+extern "C" int _log_v(const char *lvl, const char *func_name, int lno,
+		const char *fmt, va_list va) __attribute__((format(printf, 4, 0)));
+extern "C" int _log_v(const char *lvl, const char *func_name, int lno,
+		const char *fmt, va_list va) {
 	char buf[500];
 	aloe_buf_t fb = {.data = buf, .cap = sizeof(buf)};
 	int r;
@@ -48,7 +50,9 @@ finally:
 	return fb.lmt;
 }
 
-int _log_m(const char *lvl, const char *func_name, int lno,
+extern "C" int _log_m(const char *lvl, const char *func_name, int lno,
+		const char *fmt, ...) __attribute__((format(printf, 4, 5)));
+extern "C" int _log_m(const char *lvl, const char *func_name, int lno,
 		const char *fmt, ...) {
 	int r;
 	va_list va;
@@ -87,7 +91,7 @@ static void help(int argc, char **argv) {
 }
 
 int main(int argc, char **argv) {
-	int opt_op, opt_idx, r, i;
+	int opt_op, opt_idx, r;
 	typedef struct mod_rec {
 		const aloe_mod_t *op;
 		TAILQ_ENTRY(mod_rec) qent;
@@ -126,6 +130,7 @@ int main(int argc, char **argv) {
 		extern const aloe_mod_t _op; \
 		static mod_t mod = {&_op}; \
 		if (!(mod.ctx = (*mod.op->init)())) { \
+			r = EIO; \
 			log_e("init mod: %s\n", mod.op->name); \
 			goto finally; \
 		} \

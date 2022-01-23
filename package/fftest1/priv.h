@@ -5,6 +5,18 @@
 #ifndef _H_ALOE_EV_PRIV
 #define _H_ALOE_EV_PRIV
 
+#ifdef HAVE_CONFIG_H
+#  include <config.h>
+#endif
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdarg.h>
+#include <unistd.h>
+#include <string.h>
+#include <errno.h>
+#include <stddef.h>
+
 #include <aloe/ev.h>
 
 #include <compat/openbsd/sys/tree.h>
@@ -45,6 +57,7 @@ extern "C" {
 
 #define aloe_min(_a, _b) ((_a) <= (_b) ? (_a) : (_b))
 #define aloe_max(_a, _b) ((_a) >= (_b) ? (_a) : (_b))
+#define aloe_arraysize(_arr) (sizeof(_arr) / sizeof((_arr)[0]))
 
 /** Stringify. */
 #define _aloe_stringify(_s) # _s
@@ -155,6 +168,14 @@ typedef struct aloe_mod_rec {
 	void (*destroy)(void*);
 	int (*ioctl)(void*, void*);
 } aloe_mod_t;
+
+/**
+ *
+ * @param f
+ * @param fd fd=1 if f is file descriptor, otherwise assume f is path
+ * @return
+ */
+ssize_t aloe_file_size(const void *f, int fd);
 
 /** @} ALOE_EV_MISC */
 
