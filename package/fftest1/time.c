@@ -2,11 +2,11 @@
  * @author joelai
  */
 
-#include "priv.h"
+#ifdef HAVE_CONFIG_H
+#  include <config.h>
+#endif
 
-#define log_m(_lvl, _fmt, _args...) printf(_lvl "%s #%d " _fmt, __func__, __LINE__, ##_args)
-#define log_e(_args...) log_m("ERROR ", ##_args)
-#define log_d(_args...) log_m("Debug ", ##_args)
+#include "priv.h"
 
 struct timeval* aloe_timeval_norm(struct timeval *a) {
 	if (a) ALOE_TIMESEC_NORM(a->tv_sec, a->tv_usec, 1000000ul);

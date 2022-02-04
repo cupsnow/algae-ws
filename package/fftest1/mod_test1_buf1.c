@@ -1,15 +1,12 @@
-/* 
+/**
  * @author joelai
  */
+
+#ifdef HAVE_CONFIG_H
+#  include <config.h>
+#endif
+
 #include "priv.h"
-
-#define log_m(_lvl, _fmt, _args...) _log_m(_lvl, __func__, __LINE__, _fmt, ##_args)
-#define log_e(_args...) log_m("ERROR ", ##_args)
-#define log_d(_args...) log_m("Debug ", ##_args)
-
-extern int _log_m(const char *lvl, const char *func_name, int lno,
-		const char *fmt, ...);
-extern void *ev_ctx;
 
 static int instanceId = 0;
 static char mod_name[] = "test1_buf1";
@@ -61,8 +58,8 @@ static int test_buf1(void) {
 		hapErr = ENOMEM;
 		goto finally;
 	}
-	log_d("body length: %d:\n%s\n", respBuf.pos - hdrGap,
-			respBuf.data + hdrGap);
+	log_d("body length: %d:\n%s\n", (int)respBuf.pos - hdrGap,
+			(char*)respBuf.data + hdrGap);
 
 	if (aloe_buf_printf(&respHdr, "HTTP/1.1 200 OK\r\n"
 			"Content-Type: text/html; charset=UTF-8\r\n"
@@ -75,7 +72,7 @@ static int test_buf1(void) {
 
 	hdrGap = respHdr.lmt - respHdr.pos;
 
-	log_d("hdr len: %d, gap: %d,\n%s\n", respHdr.pos, hdrGap, respHdr.data);
+	log_d("hdr len: %d, gap: %d,\n%s\n", (int)respHdr.pos, hdrGap, (char*)respHdr.data);
 
 	aloe_buf_flip(&respBuf);
 	aloe_buf_flip(&respHdr);
@@ -91,14 +88,14 @@ static int test_buf1(void) {
 	respHdr.data = respBuf.data + respHdr.lmt;
 	respHdr.pos = respHdr.lmt = respBuf.data + respBuf.lmt - respHdr.data;
 
-	log_d("respBuf: %d, %d, respHdr: %d, %d\n", respBuf.pos, respBuf.lmt,
-			respHdr.pos, respHdr.lmt);
+	log_d("respBuf: %d, %d, respHdr: %d, %d\n", (int)respBuf.pos, (int)respBuf.lmt,
+			(int)respHdr.pos, (int)respHdr.lmt);
 
 	aloe_buf_shift_left(&respHdr, hdrGap);
 	respBuf.lmt -= hdrGap;
 	((char*)respBuf.data)[respBuf.lmt] = '\0';
 
-	log_d("resp: %d,\n%s\n", respBuf.lmt, respBuf.data);
+	log_d("resp: %d,\n%s\n", (int)respBuf.lmt, (char*)respBuf.data);
 
 	hapErr = 0;
 finally:

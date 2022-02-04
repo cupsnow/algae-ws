@@ -2,11 +2,15 @@
  * @author joelai
  */
 
+#ifdef HAVE_CONFIG_H
+#  include <config.h>
+#endif
+
 #include "priv.h"
 
-#define log_m(_lvl, _fmt, _args...) printf(_lvl "%s #%d " _fmt, __func__, __LINE__, ##_args)
-#define log_e(_args...) log_m("ERROR ", ##_args)
-#define log_d(_args...) log_m("Debug ", ##_args)
+#include <unistd.h>
+#include <fcntl.h>
+#include <time.h>
 
  /** Minimal due time for select(), value in micro-seconds. */
 #define ALOE_EV_PREVENT_BUSY_WAITING 1001ul
@@ -44,74 +48,17 @@ static aloe_ev_ctx_noti_t* noti_q_find(aloe_ev_ctx_noti_queue_t *q,
 	return NULL;
 }
 
-int aloe_local_socket_address(struct sockaddr_un *sa, socklen_t *sa_len,
-		const char *path) {
-	size_t path_size = strlen(path);
+void* aloe_ev_get(void *_ctx, int fd, aloe_ev_noti_cb_t cb) {
+	aloe_ev_ctx_t *ctx = (aloe_ev_ctx_t*)_ctx;
+	aloe_ev_ctx_fd_t *ev_fd;
+	aloe_ev_ctx_noti_t *ev_noti;
 
-	if (path_size >= sizeof(sa->sun_path)) {
-		log_e("Too long for local socket address\n");
-		return -1;
-	}
-	memset(sa, 0, sizeof(*sa));
-	sa->sun_family = AF_UNIX;
-	memcpy(sa->sun_path, path, path_size);
-	if (sa_len) *sa_len = aloe_offsetof(struct sockaddr_un, sun_path) + path_size + 1;
-	return 0;
-}
+	if (!(ev_fd = fd_q_find(&ctx->fd_q, fd, 0))) return NULL;
 
-int aloe_local_socker_listener(const char *path, int backlog,
-		struct sockaddr_un *sa, socklen_t *sa_len) {
-	int fd = -1, r;
-	struct sockaddr_un _sa;
-	socklen_t _sa_len;
-
-	if (!sa || !sa_len) {
-		if (!sa) sa = &_sa;
-		sa_len = &_sa_len;
+	TAILQ_FOREACH(ev_noti, &ev_fd->noti_q, qent) {
+		if (ev_noti->cb == cb) return (void*)ev_noti;
 	}
-	if ((fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
-		r = errno;
-		log_e("%s (AF_UNIX) socket, %s(%d)\n", path, strerror(r), r);
-		goto finally;
-	}
-	if ((r = aloe_local_socket_address(sa, sa_len, path)) != 0) {
-		goto finally;
-	}
-	unlink(path);
-	if (bind(fd, (struct sockaddr*)sa, *sa_len) < 0) {
-		r = errno;
-		log_e("%s (AF_UNIX) bind, %s(%d)\n", path, strerror(r), r);
-		goto finally;
-	}
-	if (listen(fd, backlog) < 0) {
-		r = errno;
-		log_e("%s (AF_UNIX) listen, %s(%d)\n", path, strerror(r), r);
-		goto finally;
-	}
-finally:
-	if (r != 0) {
-		if (fd != -1) close(fd);
-		return -1;
-	}
-	return fd;
-}
-
-int aloe_file_nonblock(int fd, int en) {
-	int r;
-
-	if ((r = fcntl(fd, F_GETFL, NULL)) == -1) {
-		r = errno;
-		log_e("Failed to get file flag: %s(%d)\n", strerror(r), r);
-		return r;
-	}
-	if (en) r |= O_NONBLOCK;
-	else r &= (~O_NONBLOCK);
-	if ((r = fcntl(fd, F_SETFL, r)) != 0) {
-		r = errno;
-		log_e("Failed to set nonblocking file flag: %s(%d)\n", strerror(r), r);
-		return r;
-	}
-	return 0;
+	return NULL;
 }
 
 void* aloe_ev_put(void *_ctx, int fd, aloe_ev_noti_cb_t cb, void *cbarg,
@@ -260,7 +207,7 @@ int aloe_ev_once(void *_ctx) {
 		return r;
 	}
 
-	if ((fdmax = clock_gettime(CLOCK_MONOTONIC, &ts)) != 0) {
+	if ((r = clock_gettime(CLOCK_MONOTONIC, &ts)) != 0) {
 		r = errno;
 		log_e("Failed to get time: %s(%d)\n", strerror(r), r);
 		return r;
@@ -310,7 +257,7 @@ int aloe_ev_once(void *_ctx) {
 
 		fdmax++;
 		TAILQ_REMOVE(&ctx->noti_q, ev_noti, qent);
-		TAILQ_INSERT_TAIL(&ctx->noti_q, ev_noti, qent);
+		TAILQ_INSERT_TAIL(&ctx->spare_noti_q, ev_noti, qent);
 		(*cb)(fd, triggered, cbarg);
 	}
 	return fdmax;

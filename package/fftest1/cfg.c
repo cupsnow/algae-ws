@@ -1,16 +1,12 @@
-/* 
+/**
  * @author joelai
  */
 
+#ifdef HAVE_CONFIG_H
+#  include <config.h>
+#endif
+
 #include "priv.h"
-
-#define log_m(_lvl, _fmt, _args...) _log_m(_lvl, __func__, __LINE__, _fmt, ##_args)
-#define log_e(_args...) log_m("ERROR ", ##_args)
-#define log_d(_args...) log_m("Debug ", ##_args)
-
-extern int _log_m(const char *lvl, const char *func_name, int lno,
-		const char *fmt, ...);
-extern void *ev_ctx;
 
 typedef struct aloe_cfg_rec {
 	aloe_cfg_type_t type;
@@ -178,7 +174,7 @@ void* aloe_cfg_set(void *_ctx, const char *key, aloe_cfg_type_t type, ...) {
 	}
 
 	aloe_buf_clear(&cfg->fb_key);
-	if (!flag.cfg_rb_inq && aloe_buf_aprintf(&cfg->fb_key, -1, "%s", key) <= 0) {
+	if (!flag.cfg_rb_inq && aloe_buf_aprintf(&cfg->fb_key, 60, "%s", key) <= 0) {
 		log_e("Failed set cfg key\n");
 		cfg_free(cfg);
 		return NULL;

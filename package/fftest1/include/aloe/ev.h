@@ -2,44 +2,8 @@
  * @author joelai
  */
 
-#ifndef _H_ALOE_EV_MAIN
-#define _H_ALOE_EV_MAIN
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdarg.h>
-#include <unistd.h>
-#include <string.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <stddef.h>
-#include <time.h>
-#include <sys/time.h>
-#include <sys/select.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <netinet/ip.h>
-#include <arpa/inet.h>
-#include <net/if.h>
-#include <signal.h>
-#include <getopt.h>
-#include <pthread.h>
-
-/** @mainpage
- *
- * # Introduction
- *
- * - Namespace is aloe_ev.
- * - Hack to check class size when build time. Referenced from <a href="https://stackoverflow.com/a/53884709">here</a>
- *   > ```
- *   > char checker(int);
- *   > char checkSizeOfInt[sizeof(usart->ctrla)] = {checker(&checkSizeOfInt)};
- *   > ```
- *   > ```
- *   > note: expected 'int' but argument is of type 'char (*)[4]'
- *   > ```
- */
+#ifndef _H_ALOE_EV
+#define _H_ALOE_EV
 
 /** @defgroup ALOE_EV_API Event driven API
  * @brief Event driven API.
@@ -71,6 +35,8 @@ typedef void (*aloe_ev_noti_cb_t)(int fd, unsigned ev_noti, void *cbarg);
 void* aloe_ev_put(void *ctx, int fd, aloe_ev_noti_cb_t cb, void *cbarg,
 		unsigned ev_wait, unsigned long sec, unsigned long usec);
 
+void* aloe_ev_get(void *ctx, int fd, aloe_ev_noti_cb_t cb);
+
 /** Remove the event from internal process. */
 void aloe_ev_cancel(void *ctx, void *ev);
 
@@ -89,4 +55,4 @@ void aloe_ev_destroy(void *ctx);
 } // extern "C"
 #endif
 
-#endif /* _H_ALOE_EV_MAIN */
+#endif /* _H_ALOE_EV */
