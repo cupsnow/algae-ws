@@ -1,0 +1,10 @@
+sphinx_rtd_theme
+six
+sphinxcontrib-plantuml
+semantic_version
+jupyter
+numpy
+matplotlib
+
+# ipykernel
+# pypt5
