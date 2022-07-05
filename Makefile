@@ -34,12 +34,16 @@ else ifneq ("$(strip $(filter bpi,$(APP_ATTR)))","")
 $(eval $(call DECL_TOOLCHAIN_GCC,$(HOME)/07_sw/gcc-aarch64-none-linux-gnu))
 $(eval $(call DECL_TOOLCHAIN_GCC,$(HOME)/07_sw/or1k-linux-musl,OR1K))
 EXTRA_PATH+=$(TOOLCHAIN_PATH:%=%/bin) $(OR1K_TOOLCHAIN_PATH:%=%/bin)
+else ifneq ("$(strip $(filter ub20,$(APP_PLATFORM)))","")
+TOOLCHAIN_SYSROOT=$(abspath $(shell gcc -print-sysroot))
+TOOLCHAIN_TARGET=$(shell gcc -dumpmachine)
+CROSS_COMPILE=$(TOOLCHAIN_TARGET)-
 endif
 
 export PATH:=$(call ENVPATH,$(PROJDIR)/tool/bin $(EXTRA_PATH) $(PATH))
 # export LD_LIBRARY_PATH:=$(call ENVPATH,$(PROJDIR)/tool/lib $(LD_LIBRARY_PATH))
 
-BUILD_SYSROOT?=$(BUILDDIR)/sysroot-$(APP_PLATFORM)
+BUILD_SYSROOT?=$(BUILDDIR2)/sysroot-$(APP_PLATFORM)
 
 # $(BUILD_PKGCFG_ENV) pkg-config --list-all
 BUILD_PKGCFG_ENV+=PKG_CONFIG_LIBDIR="$(BUILD_SYSROOT)/lib/pkgconfig" \
@@ -677,29 +681,28 @@ $(eval $(call AC_BUILD2,tmux $(PKGDIR2)/tmux $(BUILDDIR2)/tmux-$(APP_BUILD)))
 #------------------------------------
 # dep: make libasound_install ncursesw_install
 #
-alsautil_CFGPARAM_$(APP_PLATFORM)+=--disable-alsatest
-alsautil_CFGPARAM_CPPFLAGS_$(APP_PLATFORM)+=-I$(BUILD_SYSROOT)/include/ncursesw
-alsautil_CFGENV_$(APP_PLATFORM)+=$(BUILD_PKGCFG_ENV)
+alsautils_CFGPARAM_$(APP_PLATFORM)+=--disable-alsatest
+alsautils_CFGPARAM_CPPFLAGS_$(APP_PLATFORM)+=-I$(BUILD_SYSROOT)/include/ncursesw
+alsautils_CFGENV_$(APP_PLATFORM)+=$(BUILD_PKGCFG_ENV)
 
-$(eval $(call AC_BUILD3_HEAD,alsautil $(PKGDIR2)/alsa-utils $(BUILDDIR2)/alsautil-$(APP_BUILD)))
-$(eval $(call AC_BUILD3_DEFCONFIG,alsautil))
+$(eval $(call AC_BUILD3_HEAD,alsautils $(PKGDIR2)/alsa-utils $(BUILDDIR2)/alsautils-$(APP_BUILD)))
+$(eval $(call AC_BUILD3_DEFCONFIG,alsautils))
 
-$(alsautil_BUILDDIR)_footprint:
+$(alsautils_BUILDDIR)_footprint:
 	echo "--disable-alsatest" > $@
 
-$(eval $(call AC_BUILD3_DIST_INSTALL,alsautil))
-$(eval $(call AC_BUILD3_DISTCLEAN,alsautil))
-$(eval $(call AC_BUILD3_FOOT,alsautil))
+$(eval $(call AC_BUILD3_DIST_INSTALL,alsautils))
+$(eval $(call AC_BUILD3_DISTCLEAN,alsautils))
+$(eval $(call AC_BUILD3_FOOT,alsautils))
 
 #------------------------------------
 #
 libnl_BUILD_INTREE=1
-libnl_DIR=$(PKGDIR2)/libnl
-libnl_BUILDDIR=$(BUILDDIR2)/libnl-$(APP_BUILD)
-libnl_MAKE=$(MAKE) DESTDIR=$(DESTDIR) -C $(libnl_BUILDDIR)
 
+$(eval $(call AC_BUILD3_HEAD,libnl $(PKGDIR2)/libnl $(BUILDDIR2)/libnl-$(APP_BUILD)))
+
+ifneq ($(strip $(libnl_BUILD_INTREE)),)
 libnl_defconfig $(libnl_BUILDDIR)/Makefile:
-ifneq ("$(libnl_BUILD_INTREE)","")
 	[ -d "$(libnl_BUILDDIR)" ] || git clone $(libnl_DIR) $(libnl_BUILDDIR)
 	[ -x $(libnl_BUILDDIR)/configure ] || { \
 	  cd $(libnl_BUILDDIR) && ./autogen.sh; \
@@ -707,23 +710,12 @@ ifneq ("$(libnl_BUILD_INTREE)","")
 	cd $(libnl_BUILDDIR) && \
 	  ./configure --host=`$(CC) -dumpmachine` --prefix=
 else
-	[ -d "$(libnl_BUILDDIR)" ] || $(MKDIR) $(libnl_BUILDDIR)
-	cd $(libnl_BUILDDIR) && \
-	  $(libnl_DIR)/configure --host=`$(CC) -dumpmachine` --prefix=
+$(eval $(call AC_BUILD3_DEFCONFIG,libnl))
 endif
 
-libnl_install: DESTDIR=$(BUILD_SYSROOT)
-
-libnl_dist_install: DESTDIR=$(BUILD_SYSROOT)
-libnl_dist_install:
-	$(RM) $(libnl_BUILDDIR)_footprint
-	$(call RUN_DIST_INSTALL1,libnl,$(libnl_BUILDDIR)/Makefile)
-
-libnl: $(libnl_BUILDDIR)/Makefile
-	$(libnl_MAKE)
-
-libnl_%: $(libnl_BUILDDIR)/Makefile
-	$(libnl_MAKE) $(@:libnl_%=%)
+$(eval $(call AC_BUILD3_DIST_INSTALL,libnl))
+$(eval $(call AC_BUILD3_DISTCLEAN,libnl))
+$(eval $(call AC_BUILD3_FOOT,libnl))
 
 #------------------------------------
 # dep: zlib libasound_install ncursesw_install
@@ -780,16 +772,15 @@ ff_%: $(ff_BUILDDIR)/config.h
 	$(ff_MAKE) $(@:ff_%=%)
 
 #------------------------------------
+# dep: libnl3
 #
 iw_DIR=$(PKGDIR2)/iw
 iw_BUILDDIR=$(BUILDDIR2)/iw-$(APP_BUILD)
 # iw_INCDIR=$(BUILD_SYSROOT)/include $(BUILD_SYSROOT)/include/libnl3
 iw_LIBDIR=$(BUILD_SYSROOT)/lib
 
-iw_MAKE=PKG_CONFIG_LIBDIR="$(BUILD_SYSROOT)/lib/pkgconfig" \
-  PKG_CONFIG_SYSROOT_DIR="$(BUILD_SYSROOT)" \
-  PREFIX=/ DESTDIR=$(DESTDIR) CC=$(CC) LDFLAGS="$(addprefix -L,$(iw_LIBDIR))" \
-  $(MAKE) -C $(iw_BUILDDIR)
+iw_MAKE=$(BUILD_PKGCFG_ENV) PREFIX=/ DESTDIR=$(DESTDIR) CC=$(CC) \
+    LDFLAGS="$(addprefix -L,$(iw_LIBDIR))" $(MAKE) -C $(iw_BUILDDIR)
 
 iw_defconfig $(iw_BUILDDIR)/Makefile:
 	[ -d $(iw_BUILDDIR) ] || $(MKDIR) $(iw_BUILDDIR)
@@ -801,6 +792,9 @@ iw_dist_install: DESTDIR=$(BUILD_SYSROOT)
 iw_dist_install:
 	$(RM) $(iw_BUILDDIR)_footprint
 	$(call RUN_DIST_INSTALL1,iw,$(iw_BUILDDIR)/Makefile)
+
+iw_distclean:
+	$(RM) $(iw_BUILDDIR)
 
 iw: | $(iw_BUILDDIR)/Makefile
 	$(iw_MAKE)
@@ -1045,8 +1039,9 @@ ub20_dist:
 	$(MAKE) zlib_install libasound_install
 	$(MAKE) ncursesw_install
 	$(MAKE) libnl_install alsautils_install ff_dist_install openssl_install
-#mdns_install iw_install
-	$(MAKE) wpasup_install fdkaac_install
+	# $(MAKE) mdns_install iw_install
+	$(MAKE) wpasup_install
+	# $(MAKE) fdkaac_install
 
 bpi_dist: dist_DTINCDIR+=$(linux_DIR)/arch/arm64/boot/dts/allwinner
 bpi_dist: dist_dts=$(PROJDIR)/linux-sun50i-a64-bananapi-m64.dts
