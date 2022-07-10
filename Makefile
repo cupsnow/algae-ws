@@ -49,6 +49,18 @@ BUILD_SYSROOT?=$(BUILDDIR2)/sysroot-$(APP_PLATFORM)
 BUILD_PKGCFG_ENV+=PKG_CONFIG_LIBDIR="$(BUILD_SYSROOT)/lib/pkgconfig" \
   PKG_CONFIG_SYSROOT_DIR="$(BUILD_SYSROOT)"
 
+ifneq ("$(wildcard $(PROJDIR)/tool/bin/tic)","")
+BUILD_TINFO_ENV+=TERMINFO=$(PROJDIR)/tool/$(ncursesw_TINFODIR)
+endif
+
+ifneq ("$(strip $(filter som1 wlsom1 sa7715,$(APP_PLATFORM)))","")
+# BUILD_CFLAGS_$(APP_PLATFORM)+=-march=armv7-a -mfloat-abi=softfp
+BUILD_CFLAGS_$(APP_PLATFORM)+=-march=armv7-a -mfloat-abi=hard
+BUILD_CFLAGS2_$(APP_PLATFORM)+=$(BUILD_CFLAGS_$(APP_PLATFORM)) -mfpu=vfpv4
+endif
+
+APP_CFG=$(shell python3 -c "import json; print(json.load(open('prebuilt/common/etc/algae.json'))$(1))")
+
 # $(info Makefile ... Variable summary:$(NEWLINE) \
 #     $(EMPTY) APP_ATTR: $(APP_ATTR), APP_PLATFORM: $(APP_PLATFORM)$(NEWLINE) \
 #     $(EMPTY) TOOLCHAIN_SYSROOT: $(TOOLCHAIN_SYSROOT)$(NEWLINE) \
@@ -67,6 +79,8 @@ help:
 ifneq ("$(strip $(V))",)
 	$(BUILD_PKGCFG_ENV) pkg-config --list-all
 endif
+	@echo "APP_CFG: $(call APP_CFG)"
+	@echo "$(call APP_CFG,['deviceName'])-v$(call APP_CFG,['version']), $(call APP_CFG,['hardware'])-v$(call APP_CFG,['hardwareVersion'])"
 
 var_%:
 	@echo "$(strip $($(@:var_%=%)))"
@@ -87,8 +101,39 @@ pyenv2 $(BUILDDIR)/pyenv2:
 	  pip install sphinx_rtd_theme six
 
 #------------------------------------
+# Device Tree Compiler v1.1-487-g6c02224
+#
+dtc_DIR?=$(PKGDIR2)/dtc
+dtc_BUILDDIR?=$(BUILDDIR2)/dtc-$(APP_BUILD)
+dtc_MAKE=$(MAKE) CC=$(CC) PREFIX= DESTDIR=$(DESTDIR) NO_PYTHON=1 \
+    -C $(dtc_BUILDDIR)
+
+dtc_host_install:
+	$(MAKE) APP_ATTR=ub20 DESTDIR=$(PROJDIR)/tool dtc_install
+
+dtc_defconfig $(dtc_BUILDDIR)/Makefile:
+	git clone $(dtc_DIR) $(dtc_BUILDDIR)
+
+dtc_distclean:
+	$(RM) $(dtc_BUILDDIR)
+
+dtc_install: DESTDIR=$(BUILD_SYSROOT)
+
+dtc_dist_install: DESTDIR=$(BUILD_SYSROOT)
+dtc_dist_install:
+	$(RM) $(dtc_BUILDDIR)_footprint
+	echo "NO_PYTHON=1" > $(dtc_BUILDDIR)_footprint
+	$(call RUN_DIST_INSTALL1,dtc,$(dtc_BUILDDIR)/Makefile)
+
+dtc: $(dtc_BUILDDIR)/Makefile
+	$(dtc_MAKE) $(BUILDPARALLEL:%=-j%)
+
+dtc_%: $(dtc_BUILDDIR)/Makefile
+	$(dtc_MAKE) $(BUILDPARALLEL:%=-j%) $(@:dtc_%=%)
+
+#------------------------------------
 # sunxi-tools v1.1-487-g6c02224
-# dep: dtc
+# dep: dtc_host_install
 #
 sunxitools_DIR=$(PKGDIR2)/sunxi-tools
 sunxitools_BUILDDIR=$(BUILDDIR2)/sunxitools-host
@@ -103,43 +148,13 @@ sunxitools_defconfig $(sunxitools_BUILDDIR)/Makefile:
 sunxitools_install: DESTDIR=$(PROJDIR)/tool
 
 sunxitools: $(sunxitools_BUILDDIR)/Makefile
-	$(sunxitools_MAKE)
+	$(sunxitools_MAKE) $(BUILDPARALLEL:%=-j%)
 
 sunxitools_%: $(sunxitools_BUILDDIR)/Makefile
-	$(sunxitools_MAKE) $(@:sunxitools_%=%)
-
-#------------------------------------
-# Device Tree Compiler v1.1-487-g6c02224
-#
-dtc_DIR?=$(PKGDIR2)/dtc
-dtc_BUILDDIR?=$(BUILDDIR2)/dtc-host
-dtc_MAKE=$(MAKE) PREFIX= DESTDIR=$(DESTDIR) NO_PYTHON=1 -C $(dtc_BUILDDIR)
-# dtc_MAKE+=V=1
-
-dtc_defconfig $(dtc_BUILDDIR)/Makefile:
-	git clone $(dtc_DIR) $(dtc_BUILDDIR)
-
-dtc_distclean:
-	$(RM) $(dtc_BUILDDIR)
-
-dtc_install: DESTDIR=$(PROJDIR)/tool
-
-dtc_dist_install: DESTDIR=$(PROJDIR)/tool
-dtc_dist_install:
-	$(RM) $(dtc_BUILDDIR)_footprint
-	echo "NO_PYTHON=1" > $(dtc_BUILDDIR)_footprint
-	$(call RUN_DIST_INSTALL1,dtc,$(dtc_BUILDDIR)/Makefile)
-
-dtc: $(dtc_BUILDDIR)/Makefile
-	$(dtc_MAKE)
-
-dtc_%: $(dtc_BUILDDIR)/Makefile
-	$(dtc_MAKE) $(@:dtc_%=%)
+	$(sunxitools_MAKE) $(BUILDPARALLEL:%=-j%) $(@:sunxitools_%=%)
 
 #------------------------------------
 # ARM Trusted Firmware-A v2.5-294-gabde216dc
-# for bpi
-#   make atf_bl31
 #
 atf_DIR?=$(PKGDIR2)/atf
 atf_BUILDDIR?=$(BUILDDIR2)/atf-$(APP_PLATFORM)
@@ -161,16 +176,15 @@ atf_doc: | $(BUILDDIR)/pyenv
 	    --transform="s/html/atf-docs/" \
 	    -C $(atf_BUILDDIR)/package/atf/docs/build html
 
-# atf:
-# 	$(atf_MAKE)
+ifneq ("$(strip $(filter bpi,$(APP_ATTR)))","")
+atf: atf_bl31
+endif
 
 atf_%:
-	$(atf_MAKE) $(@:atf_%=%)
+	$(atf_MAKE) $(BUILDPARALLEL:%=-j%) $(@:atf_%=%)
 
 #------------------------------------
 # Crust: Libre SCP firmware for Allwinner sunxi SoCs v0.4-5-gcff057d
-# for bpi
-#   make crust_scp
 #
 crust_DIR?=$(PKGDIR2)/crust
 crust_BUILDDIR?=$(BUILDDIR2)/crust-$(APP_PLATFORM)
@@ -185,11 +199,12 @@ crust_defconfig $(crust_BUILDDIR)/.config:
 $(addprefix crust_,clean distclean docs):
 	$(crust_MAKE) $(@:crust_%=%)
 
-# crust: $(crust_BUILDDIR)/.config
-# 	$(crust_MAKE)
+ifneq ("$(strip $(filter bpi,$(APP_ATTR)))","")
+crust: crust_scp
+endif
 
 crust_%: $(crust_BUILDDIR)/.config
-	$(crust_MAKE) $(@:crust_%=%)
+	$(crust_MAKE) $(BUILDPARALLEL:%=-j%) $(@:crust_%=%)
 
 #------------------------------------
 # u-boot v2021.10-rc1-269-g8f07f5376a
@@ -262,13 +277,21 @@ ub_tools_install: ub_tools
 		proftool spl_size_limit \
 		$(DESTDIR)/bin/
 
+ub_envtools: $(ub_BUILDDIR)/.config
+	$(ub_MAKE) $(BUILDPARALLEL:%=-j%) cmd_crosstools_strip="true skip strip" \
+	    $(@:ub_%=%)
+
+ub_envtools_install: DESTDIR=$(BUILD_SYSROOT)
+ub_envtools_install: ub_envtools
+	[ -d $(DESTDIR)/sbin ] || $(MKDIR) $(DESTDIR)/sbin
+	$(CP) $(ub_BUILDDIR)/tools/env/fw_printenv $(DESTDIR)/sbin/
+	ln -sf fw_printenv $(DESTDIR)/sbin/fw_setenv
+
 ub: $(ub_BUILDDIR)/.config
-	$(ub_MAKE)
+	$(ub_MAKE) $(BUILDPARALLEL:%=-j%)
 
 ub_%: $(ub_BUILDDIR)/.config
-	$(ub_MAKE) $(@:ub_%=%)
-
-.NOTPARALLEL: ub ub_%
+	$(ub_MAKE) $(BUILDPARALLEL:%=-j%) $(@:ub_%=%)
 
 #------------------------------------
 # Linux kernel v5.14-rc7-89-g77dd11439b86
@@ -344,7 +367,11 @@ linux: $(linux_BUILDDIR)/.config
 linux_%: $(linux_BUILDDIR)/.config
 	$(linux_MAKE) $(BUILDPARALLEL:%=-j%) $(@:linux_%=%)
 
-# .NOTPARALLEL: linux linux_%
+kernelrelease=$(BUILDDIR)/kernelrelease-$(APP_PLATFORM)
+
+kernelrelease $(kernelrelease):
+	[ -d $(dir $(kernelrelease)) ] || $(MKDIR) $(dir $(kernelrelease))
+	"make" -s --no-print-directory linux_kernelrelease > $(kernelrelease)
 
 #------------------------------------
 # busybox 1_12_0-7872-g8ae6a4344
@@ -405,7 +432,9 @@ bb_%: $(bb_BUILDDIR)/.config
 #------------------------------------
 #
 libasound_CFGPARAM_$(APP_PLATFORM)+=--disable-topology
-$(eval $(call AC_BUILD3_HEAD,libasound $(PKGDIR2)/alsa-lib $(BUILDDIR2)/libasound-$(APP_BUILD)))
+$(eval $(call AC_BUILD3_HEAD,libasound \
+    $(PKGDIR2)/alsa-lib \
+	$(BUILDDIR2)/libasound-$(APP_BUILD)))
 $(eval $(call AC_BUILD3_DEFCONFIG,libasound))
 
 $(libasound_BUILDDIR)_footprint:
@@ -512,7 +541,7 @@ ncursesw_TINFODIR=/usr/share/terminfo
 
 # refine to comma saperated list when use in tic
 ncursesw_TINFO=ansi ansi-m color_xterm,linux,pcansi-m,rxvt-basic,vt52,vt100 \
-  vt102,vt220,xterm,tmux-256color,screen-256color,xterm-256color
+  vt102,vt220,xterm,tmux-256color,screen-256color,xterm-256color screen
 
 ncursesw_DEF_CFG=$(ncursesw_DIR)/configure --prefix= --with-shared \
   --with-termlib --with-ticlib --enable-widec --enable-pc-files \
@@ -613,6 +642,7 @@ ncursesw_%: $(ncursesw_BUILDDIR)/Makefile
 $(eval $(call AC_BUILD2,libmnl $(PKGDIR2)/libmnl $(BUILDDIR2)/libmnl-$(APP_BUILD)))
 
 #------------------------------------
+# dep: ncurses mnl
 #
 ethtool_CFGPARAM_CPPFLAGS_$(APP_PLATFORM)+=-I$(BUILD_SYSROOT)/include/ncursesw
 ethtool_CFGPARAM_LDFLAGS_$(APP_PLATFORM)+=-lmnl
@@ -638,7 +668,7 @@ openssl_defconfig $(openssl_BUILDDIR)/configdata.pm:
 	cd $(openssl_BUILDDIR) && \
 	  $(openssl_DIR)/Configure $(openssl_CFGPARAM_$(APP_PLATFORM)) \
 	    --cross-compile-prefix=$(CROSS_COMPILE) --prefix=/ \
-	    --openssldir=/lib/ssl no-tests \
+	    --openssldir=/lib/ssl no-tests no-hw-padlock \
 		-L$(BUILD_SYSROOT)/lib -I$(BUILD_SYSROOT)/include
 
 openssl_install: DESTDIR=$(BUILD_SYSROOT)
@@ -718,45 +748,48 @@ $(eval $(call AC_BUILD3_DISTCLEAN,libnl))
 $(eval $(call AC_BUILD3_FOOT,libnl))
 
 #------------------------------------
+#
+$(eval $(call AC_BUILD3_HEAD,libgpiod $(PKGDIR2)/libgpiod $(BUILDDIR2)/libgpiod-$(APP_BUILD)))
+libgpiod_defconfig $(libgpiod_BUILDDIR)/Makefile: $(libgpiod_BUILDDIR)/config.cache
+$(libgpiod_BUILDDIR)/config.cache:
+	[ -d "$(libgpiod_BUILDDIR)" ] || $(MKDIR) $(libgpiod_BUILDDIR)
+	echo "ac_cv_func_malloc_0_nonnull=yes" > $(libgpiod_BUILDDIR)/config.cache
+libgpiod_CFGPARAM_$(APP_PLATFORM)+=--cache-file=$(libgpiod_BUILDDIR)/config.cache \
+    --enable-tools
+$(eval $(call AC_BUILD3_DEFCONFIG,libgpiod))
+$(eval $(call AC_BUILD3_DIST_INSTALL,libgpiod))
+$(eval $(call AC_BUILD3_DISTCLEAN,libgpiod))
+$(eval $(call AC_BUILD3_FOOT,libgpiod))
+
+#------------------------------------
 # dep: zlib libasound_install ncursesw_install
 #
 ff_DIR=$(PKGDIR2)/ffmpeg
 ff_BUILDDIR=$(BUILDDIR2)/ffmpeg-$(APP_PLATFORM)
 ff_INCDIR=$(BUILD_SYSROOT)/include $(BUILD_SYSROOT)/include/ncursesw
 ff_LIBDIR+=$(BUILD_SYSROOT)/lib64 $(BUILD_SYSROOT)/usr/lib64 \
-  $(BUILD_SYSROOT)/lib $(BUILD_SYSROOT)/usr/lib
+    $(BUILD_SYSROOT)/lib $(BUILD_SYSROOT)/usr/lib
 ifneq ("$(strip $(filter bpi,$(APP_ATTR)))","")
-ff_CFGPARAM+=--arch=aarch64
+ff_CFGPARAM_$(APP_PLATFORM)+=--arch=aarch64  --enable-ffplay
 else ifneq ("$(strip $(filter xm,$(APP_ATTR)))","")
-ff_CFGPARAM+=--arch=arm --cpu=cortex-a5 --enable-vfpv3
+ff_CFGPARAM_$(APP_PLATFORM)+=--arch=arm --cpu=cortex-a5 --enable-vfpv3 \
+    --enable-ffplay
 else
-ff_CFGPARAM+=--enable-debug=
+ff_CFGPARAM_$(APP_PLATFORM)+=--enable-debug=  --enable-ffplay
 endif
 
 ff_MAKE=$(MAKE) DESTDIR=$(DESTDIR) -C $(ff_BUILDDIR)
 
-APP_PLATFORM_ff_defconfig:
+ff_defconfig $(ff_BUILDDIR)/config.h:
 	[ -d "$(ff_BUILDDIR)" ] || $(MKDIR) $(ff_BUILDDIR)
 	cd $(ff_BUILDDIR) && \
 	  $(BUILD_PKGCFG_ENV) LD_LIBRARY_PATH=$(PROJDIR)/tool/lib \
 	    $(ff_DIR)/configure --target-os=linux --cross_prefix=$(CROSS_COMPILE) \
-		--enable-cross-compile $(ff_CFGPARAM) \
+		--enable-cross-compile $(ff_CFGPARAM_$(APP_PLATFORM)) \
 		--prefix=/ --disable-iconv --enable-pic --enable-shared \
-	    --enable-hardcoded-tables --enable-pthreads --enable-ffplay \
+	    --enable-hardcoded-tables --enable-pthreads \
 	    --extra-cflags="$(addprefix -I,$(ff_INCDIR)) -D_REENTRANT" \
 	    --extra-ldflags="$(addprefix -L,$(ff_LIBDIR))"
-
-xm_ff_defconfig: ff_CFGPARAM+=--arch=arm --cpu=cortex-a5 --enable-vfpv3
-xm_ff_defconfig: APP_PLATFORM_ff_defconfig
-
-bpi_ff_defconfig: ff_CFGPARAM+=--arch=aarch64
-bpi_ff_defconfig: APP_PLATFORM_ff_defconfig
-
-ub20_ff_defconfig: ff_CFGPARAM+=--enable-debug=
-ub20_ff_defconfig: APP_PLATFORM_ff_defconfig
-
-ff_defconfig $(ff_BUILDDIR)/config.h:
-	$(MAKE) $(APP_PLATFORM)_ff_defconfig
 
 ff_install: DESTDIR=$(BUILD_SYSROOT)
 
@@ -766,10 +799,10 @@ ff_dist_install:
 	$(call RUN_DIST_INSTALL1,ff,$(ff_BUILDDIR)/config.h)
 
 ff: $(ff_BUILDDIR)/config.h
-	$(ff_MAKE)
+	$(ff_MAKE) $(BUILDPARALLEL:%=-j%)
 
 ff_%: $(ff_BUILDDIR)/config.h
-	$(ff_MAKE) $(@:ff_%=%)
+	$(ff_MAKE) $(BUILDPARALLEL:%=-j%) $(@:ff_%=%)
 
 #------------------------------------
 # dep: libnl3
@@ -826,17 +859,56 @@ wpasup_defconfig $(wpasup_BUILDDIR)/wpa_supplicant/.config:
 	fi
 
 wpasup_install: DESTDIR=$(BUILD_SYSROOT)
+wpasup_install: wpasup_all
+	$(wpasup_MAKE) $(BUILDPARALLEL:%=-j%) install
 
 wpasup_dist_install: DESTDIR=$(BUILD_SYSROOT)
 wpasup_dist_install:
-	$(RM) $(wpasup_BUILDDIR)_footprint
+	echo "libnl3" > $(wpasup_BUILDDIR)_footprint
 	$(call RUN_DIST_INSTALL1,wpasup,$(wpasup_BUILDDIR)/wpa_supplicant/.config)
 
 wpasup: $(wpasup_BUILDDIR)/wpa_supplicant/.config
-	$(wpasup_MAKE)
+	$(wpasup_MAKE) $(BUILDPARALLEL:%=-j%)
 
 wpasup_%: $(wpasup_BUILDDIR)/wpa_supplicant/.config
-	$(wpasup_MAKE) $(@:wpasup_%=%)
+	$(wpasup_MAKE) $(BUILDPARALLEL:%=-j%) $(@:wpasup_%=%)
+
+#------------------------------------
+# wpa_supplicant-2.9
+# dep: openssl, libnl, linux_headers
+#
+hostapd_DIR=$(PKGDIR2)/hostapd-2.9
+hostapd_BUILDDIR?=$(BUILDDIR2)/hostapd-$(APP_BUILD)
+hostapd_MAKE=$(MAKE) CC=$(CC) LIBNL_INC="$(BUILD_SYSROOT)/include/libnl3" \
+    EXTRA_CFLAGS="-I$(BUILD_SYSROOT)/include" LDFLAGS="-L$(BUILD_SYSROOT)/lib" \
+    DESTDIR=$(DESTDIR) LIBDIR=/lib BINDIR=/sbin INCDIR=/include \
+    -C $(hostapd_BUILDDIR)/hostapd
+
+hostapd_defconfig $(hostapd_BUILDDIR)/hostapd/.config:
+	if [ ! -d "$(hostapd_BUILDDIR)" ]; then \
+	  $(MKDIR) $(hostapd_BUILDDIR) && \
+	  $(CP) $(hostapd_DIR)/* $(hostapd_BUILDDIR); \
+	fi
+	if [ -f "$(PROJDIR)/hostapd.config" ]; then \
+	  $(CP) $(PROJDIR)/hostapd.config \
+	    $(hostapd_BUILDDIR)/hostapd/.config; \
+	else \
+	  $(CP) $(hostapd_BUILDDIR)/hostapd/defconfig \
+	    $(hostapd_BUILDDIR)/hostapd/.config; \
+	fi
+
+hostapd_install: DESTDIR=$(BUILD_SYSROOT)
+
+hostapd_dist_install: DESTDIR=$(BUILD_SYSROOT)
+hostapd_dist_install:
+	echo "libnl3" > $(hostapd_BUILDDIR)_footprint
+	$(call RUN_DIST_INSTALL1,hostapd,$(hostapd_BUILDDIR)/Makefile)
+
+hostapd: $(hostapd_BUILDDIR)/hostapd/.config
+	$(hostapd_MAKE) $(BUILDPARALLEL:%=-j%)
+
+hostapd_%: $(hostapd_BUILDDIR)/hostapd/.config
+	$(hostapd_MAKE) $(BUILDPARALLEL:%=-j%) $(@:hostapd_%=%)
 
 #------------------------------------
 #
@@ -885,85 +957,52 @@ mdns_%: | $(mdns_BUILDDIR)/mDNSPosix/Makefile
 
 #------------------------------------
 #
-fftest1_bindir?=/bin
-fftest1_CFGPARAM_$(APP_PLATFORM)+=--bindir=$(fftest1_bindir)
-#fftest1_CFGPARAM_$(APP_PLATFORM)+=CFLAGS="-O0"
-fftest1_CFGPARAM_ub20+=--enable-debug DATA_PREFIX="./"
-
-$(eval $(call AC_BUILD3_HEAD,fftest1 $(PROJDIR)/package/fftest1 $(BUILDDIR2)/fftest1-$(APP_BUILD)))
-
-fftest1_distclean:
-	$(RM) $(fftest1_BUILDDIR)
-	if [ -x $(fftest1_DIR)/distclean.sh ]; then \
-	  $(fftest1_DIR)/distclean.sh; \
-	fi
-
-#fftest1_install: fftest1_cgi_install
-
-fftest1_cgi_install: DESTDIR=$(BUILD_SYSROOT)
-fftest1_cgi_install:
-	[ -d $(DESTDIR)/var/cgi-bin ] || $(MKDIR) $(DESTDIR)/var/cgi-bin
-	for i in fftest1_fwupd.cgi; do \
-	  [ -e $(DESTDIR)/var/cgi-bin/$${i} ] || ln -sf ../../$(fftest1_bindir)/fftest1-cgi $(DESTDIR)/var/cgi-bin/$${i}; \
-	done
-
-# DESTDIR=`pwd`/build/sysroot-ub20 LD_LIBRARY_PATH=`pwd`/build/sysroot-ub20/lib:`pwd`/build/sysroot-ub20/usr/lib build/sysroot-ub20/sbin/lighttpd -f `pwd`/build/sysroot-ub20/etc/lighttpd.conf -m `pwd`/build/sysroot-ub20/lib -D
-fftest1_host: DESTDIR=$(BUILD_SYSROOT)
-fftest1_host:
-	[ -d "$(DESTDIR)/var/www" ] || $(MKDIR) $(DESTDIR)/var/www
-	ln -sf $(fftest1_DIR)/test/fwupd.html $(DESTDIR)/var/www/
-	[ -d "$(DESTDIR)/etc" ] || $(MKDIR) $(DESTDIR)/etc
-	[ -e $(DESTDIR)/etc/lighttpd.conf ] || ln -sf $(fftest1_DIR)/test/lighttpd.conf $(DESTDIR)/etc/
-	$(MAKE) fftest1_cgi_install
-	[ -d "$(DESTDIR)/media" ] || $(MKDIR) $(DESTDIR)/media
-	[ -e $(DESTDIR)/media/ota-host.tar.gz ] || ln -sf $(PROJDIR)/destdir/ota.tar.gz $(DESTDIR)/media/ota-host.tar.gz
-	[ -e $(DESTDIR)/media/sa7715 ] || ln -sf $(PROJDIR) $(DESTDIR)/media/sa7715
-	for i in var/run; do \
-	  [ -d "$(DESTDIR)/$${i}" ] || $(MKDIR) $(DESTDIR)/$${i}; \
-	done
-
-fftest1_testenv: DESTDIR=$(fftest1_BUILDDIR)
-fftest1_testenv:
-	for i in media var/run var/cgi-bin; do \
-	  [ -d "$(DESTDIR)/$${i}" ] || $(MKDIR) $(DESTDIR)/$${i}; \
-	done
-	for i in var/www lighttpd.conf run-lighttpd.sh; do \
-	  [ -e $(DESTDIR)/$${i} ] || ln -sf $(fftest1_DIR)/test/$${i} $(DESTDIR)/$$(dirname $${i}); \
-	done
-	@echo "Install cgi"
-	for i in fftest1_fwupd.cgi; do \
-	  [ -e $(DESTDIR)/var/cgi-bin/$${i} ] || ln -sf $(DESTDIR)/fftest1-cgi $(DESTDIR)/var/cgi-bin/$${i}; \
-	done
-	$(RM) $(DESTDIR)/media/* $(DESTDIR)/var/run/*
-ifneq ("$(strip $(filter ub20,$(APP_PLATFORM)))","")
-	[ -e $(PROJDIR)/destdir/ota.tar.gz ] && $(CP) $(PROJDIR)/destdir/ota.tar.gz $(DESTDIR)/media/
-endif
-
-$(eval $(call AC_BUILD3_FOOT,fftest1))
-
-
-#------------------------------------
-#
-locale_BUILDDIR=$(BUILDDIR2)/locale-$(APP_BUILD)
-locale_localedef=I18NPATH=$(TOOLCHAIN_SYSROOT)/usr/share/i18n localedef
-locale_def?=C.UTF-8
+locale_BUILDDIR?=$(BUILDDIR2)/locale-$(APP_BUILD)
+locale_DEF_localedef=I18NPATH=$(TOOLCHAIN_SYSROOT)/usr/share/i18n localedef
+locale_localedef=$(locale_DEF_localedef) -i $1 -f $2 $(or $(3),$(1).$(2))
+locale_localenames=C.UTF-8
 
 $(locale_BUILDDIR)/C.UTF-8: | $(locale_BUILDDIR)
-	$(locale_localedef) -i POSIX -f UTF-8 $@ 2>/dev/null || true "force pass"
+	$(call locale_localedef,POSIX,UTF-8,$@) || true "force successful"
 
 $(locale_BUILDDIR)/%: | $(locale_BUILDDIR)
-	$(locale_localedef) -i $(word 1,$(subst ., ,$(@:$(locale_BUILDDIR)/%=%))) \
-		-f $(word 2,$(subst ., ,$(@:$(locale_BUILDDIR)/%=%))) $@
+	$(call locale_localedef, \
+	    $(word 1,$(subst .,$(SPACE),$(@:$(locale_BUILDDIR)/%=%))), \
+		$(word 2,$(subst .,$(SPACE),$(@:$(locale_BUILDDIR)/%=%))), \
+		$@)
 
 $(locale_BUILDDIR):
-	$(MKDIR) $(locale_BUILDDIR)
+	$(MKDIR) $@
 
-locale: DESTDIR=$(BUILD_SYSROOT)
-locale: $(addprefix $(locale_BUILDDIR)/,$(locale_def))
+locale_install: DESTDIR=$(BUILD_SYSROOT)
+locale_install: $(addprefix $(locale_BUILDDIR)/,$(locale_localenames))
 	[ -d $(DESTDIR)/usr/lib/locale ] || $(MKDIR) $(DESTDIR)/usr/lib/locale
 	cd $(locale_BUILDDIR) && \
-	  $(locale_localedef) --add-to-archive --prefix=$(DESTDIR) --replace \
-	    $(locale_def)
+	  $(locale_DEF_localedef) --add-to-archive --replace --prefix=$(DESTDIR) \
+	  $(subst $(locale_BUILDDIR)/,,$^)
+
+#------------------------------------
+# dep: openssl libnl
+#
+wlregdb_DIR?=$(PKGDIR2)/wireless-regdb
+crda_DIR=$(PKGDIR2)/crda
+crda_BUILDDIR=$(BUILDDIR2)/crda
+crda_MAKEPARAM+=REG_BIN=$(wlregdb_DIR)/regulatory.bin PUBKEY_DIR=$(wlregdb_DIR) \
+    PREFIX=/ CFLAGS="-I$(BUILD_SYSROOT)/include $(BUILD_CFLAGS2_$(APP_PLATFORM))" \
+	LDFLAGS=-L$(BUILD_SYSROOT)/lib USE_OPENSSL=1 CC=$(CC)
+crda_MAKE=$(BUILD_PKGCFG_ENV) $(MAKE) $(crda_MAKEPARAM) \
+	$(crda_MAKEPARAM_$(APP_PLATFORM)) -C $(crda_BUILDDIR)
+
+crda_defconfig $(crda_BUILDDIR)/Makefile:
+	[ -d $(crda_BUILDDIR) ] || $(MKDIR) $(crda_BUILDDIR)
+	$(CP) $(crda_DIR)/* $(wlregdb_DIR)/regulatory.bin $(wlregdb_DIR)/sforshee.key.pub.pem \
+	$(crda_BUILDDIR)/
+
+crda_distclean:
+	$(RM) $(crda_BUILDDIR)
+
+crda: $(crda_BUILDDIR)/Makefile
+	. $(BUILDDIR)/pyenv/bin/activate && $(crda_MAKE)
 
 #------------------------------------
 # dep: ub ub_tools linux_dtbs bb dtc
@@ -971,11 +1010,23 @@ locale: $(addprefix $(locale_BUILDDIR)/,$(locale_def))
 # dep for other platform: linux_bzImage
 #
 dist_DIR?=$(DESTDIR)
-wlregdb_DIR?=$(PKGDIR2)/wireless-regdb
 ap6212_DIR=$(PROJDIR)/package/ap6212
 
 # reference from linux_dtbs
 dist_DTINCDIR+=$(linux_DIR)/scripts/dtc/include-prefixes
+
+dist_log=$(BUILDDIR)/distlog-$(APP_PLATFORM).txt
+dtbbasename=$(BUILDDIR)/dtbbasename-$(APP_PLATFORM)
+
+ifneq ("$(strip $(filter bpi,$(APP_PLATFORM)))","")
+dist_DTINCDIR+=$(linux_DIR)/arch/arm64/boot/dts/allwinner
+dist_dts=$(PROJDIR)/linux-sun50i-a64-bananapi-m64.dts
+dist_dtb=$(linux_BUILDDIR)/arch/arm64/boot/dts/allwinner/sun50i-a64-bananapi-m64.dtb
+dist_loadaddr=0x40080000 # 0x40200000
+dist_compaddr=0x44000000
+dist_compsize=0xb000000
+dist_fdtaddr=0x4fa00000
+endif
 
 dist dist_sd:
 	$(MAKE) $(APP_PLATFORM)_$@
@@ -1043,37 +1094,28 @@ ub20_dist:
 	$(MAKE) wpasup_install
 	# $(MAKE) fdkaac_install
 
-bpi_dist: dist_DTINCDIR+=$(linux_DIR)/arch/arm64/boot/dts/allwinner
-bpi_dist: dist_dts=$(PROJDIR)/linux-sun50i-a64-bananapi-m64.dts
-bpi_dist: dist_dtb=$(linux_BUILDDIR)/arch/arm64/boot/dts/allwinner/sun50i-a64-bananapi-m64.dtb
-bpi_dist: dist_loadaddr=0x40080000 # 0x40200000
-bpi_dist: dist_compaddr=0x44000000
-bpi_dist: dist_compsize=0xb000000
-bpi_dist: dist_fdtaddr=0x4fa00000
-bpi_dist: dist_log=$(BUILDDIR)/dist_log-$(APP_PLATFORM).txt
 bpi_dist:
 	[ -d $(dir $(dist_log)) ] || $(MKDIR) $(dir $(dist_log))
 	@$(if $(dist_log),echo "" >> $(dist_log); date >> $(dist_log))
 	[ -x $(PROJDIR)/tool/bin/tic ] || $(MAKE) ncursesw_host_dist_install
 	[ -x $(PROJDIR)/tool/bin/mkimage ] || $(MAKE) ub_tools_install
 	[ -x $(PROJDIR)/tool/bin/dtc ] || $(MAKE) dtc_dist_install
-ifeq ("$(filter-out placeholder,$(NB))","")
 	$(MAKE) atf_bl31 crust_scp
-	$(MAKE) ub ub_envtools linux_Image.gz linux_dtbs linux_modules \
-	    linux_headers_install
+	$(MAKE) ub ub_envtools linux_Image.gz
+	make kernelrelease
+	$(MAKE) linux_dtbs linux_modules
 	@$(if $(dist_log),date >> $(dist_log); echo "Done build boot/kernel" >> $(dist_log))
-endif
-ifeq ("$(filter-out 2,$(NB))","")
-	$(MAKE) linux_modules_install zlib_dist_install libasound_dist_install \
-	    ncursesw_dist_install attr_dist_install
+	$(RM) $(BUILD_SYSROOT)/lib/modules
+	$(MAKE) ub_envtools_install linux_modules_install linux_headers_install \
+	    zlib_dist_install libasound_dist_install ncursesw_dist_install \
+		attr_dist_install
 	$(MAKE) alsautils_dist_install ff_dist_install bb_dist_install \
 	    openssl_install libnl_dist_install libmnl_dist_install \
 		ethtool_dist_install acl_dist_install lzo_dist_install \
 		e2fsprogs_dist_install fdkaac_dist_install
 	$(MAKE) wpasup_dist_install iw_install mtdutil_dist_install \
-	    ncursesw_terminfo_dist_install locale
+	    ncursesw_terminfo_dist_install locale_install libgpiod_dist_install
 	@$(if $(dist_log),date >> $(dist_log); echo "Done build package" >> $(dist_log))
-endif
 	@echo -e "$(ANSI_GREEN)Install booting files$(ANSI_NORMAL)"
 	@[ -d $(dist_DIR)/boot ] || $(MKDIR) $(dist_DIR)/boot
 	@rsync -avv $(ub_BUILDDIR)/u-boot-sunxi-with-spl.bin \

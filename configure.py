@@ -14,9 +14,16 @@ sys.path.append(os.path.join(projDir, "builder"))
 from builder import *
 
 appCfg = {
-	"versionName": "algae-0.1.1",
-	"hardwareName": "bpi",
-	"serialNumber": "1",
+	"deviceName": "algae",
+	"version": "0.1.2",
+	"hardware": "bpi",
+	"hardwareVersion": "0.1.1",
+	"model": "bbq3",
+	"modelSerial": "1",
+	"buildDir": "build",
+	"buildDir2": "../build",
+	"pkgDir": "package",
+	"pkgDir2": "..",
 }
 
 def populate():
