@@ -2,11 +2,10 @@
 
 . /etc/init.d/func
 
-[ -f /etc/mdev.conf ] && mdev -d
+/etc/init.d/mdev-initd start
 
-dmesg -n 4
-ifconfig lo up 127.0.0.1
-daemon start ifplugd -Mpql
+cmd_run dmesg -n 4
+cmd_run ifconfig lo up 127.0.0.1
 
 for script in `find /etc/init.d -iname S[0-9]*`; do
   [ -x $script ] || continue;

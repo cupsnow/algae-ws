@@ -4,14 +4,14 @@
 
 import sys, os, json, logging, argparse
 
-logging.basicConfig(level=logging.NOTSET, format="[%(asctime)s][%(levelname)s][%(name)s][%(funcName)s][#%(lineno)d]%(message)s")
-
-logger = logging.getLogger("configure")
-
 projDir = os.getcwd()
 
 sys.path.append(os.path.join(projDir, "builder"))
 from builder import *
+
+logging.basicConfig(level=logging.NOTSET, format="[%(asctime)s][%(levelname)s][%(name)s][%(funcName)s][#%(lineno)d]%(message)s")
+
+logger = logging.getLogger("configure")
 
 appCfg = {
 	"deviceName": "algae",
@@ -37,10 +37,10 @@ def populate():
 # Start main
 
 def main (argv = sys.argv):
+	argc = len(argv)
 	argparser = argparse.ArgumentParser(prog=argv[0], description="Configure project")
 	argparser.add_argument("--populate", help="Populate configurations", action="store_true")
 
-	argc = len(argv)
 	if argc <= 1:
 		argparser.print_usage()
 		sys.exit(0)
@@ -52,11 +52,9 @@ def main (argv = sys.argv):
 
 if __name__ == "__main__":
 	# jupyter?
-	ipy = guessIpy()
-	if ipy:
+	if ipy := guessIpy():
 		logger.debug("guess ipython {}".format(ipy))
 		argv = ["configure.py", "--help"]
 		main(argv)
 	else:
 		main(sys.argv)
-
