@@ -1,3 +1,16 @@
 root:x:0:
 wheel:x:100:
+audio:x:101:
+cdrom:x:102:
+dialout:x:103:
+disk:x:104:
+input:x:105:
+kmem:x:106:
+kvm:x:107:
+lp:x:108:
+render:x:109:
+tape:x:110:
+tty:x:111:
+video:x:112:
+adm:x:113:
 nogroup:x:1000:

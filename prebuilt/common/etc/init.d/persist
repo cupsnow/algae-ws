@@ -1,0 +1,50 @@
+#!/bin/sh
+
+. /etc/init.d/func
+
+_pri_tag="persist-initd"
+
+log_d "$0 $*"
+
+case "$1" in
+"start")
+  _pri_mtd=$(find_mtd persist) || { log_e "no persist mtd"; exit 1; }
+  _pri_ubi=$(find_ubi $_pri_mtd)
+  if [ -z "$_pri_ubi" ]; then
+    ubiattach -m $_pri_mtd &>/dev/null || { log_e "attach persist ubi"; exit 1; }
+    _pri_ubi=$(find_ubi $_pri_mtd)
+    log_d "attached mtd${_pri_mtd} to ubi${_pri_ubi}"
+  else
+    log_d "found mtd${_pri_mtd} to ubi${_pri_ubi}"
+  fi
+  [ -d ${persist_cfg} ] || mkdir -p ${persist_cfg}
+  if ! grep -qs "/dev/ubi${_pri_ubi}_0 ${persist_cfg}" /proc/mounts; then
+    mount -t ubifs /dev/ubi${_pri_ubi}_0 ${persist_cfg} || { log_e "mount persist ubi"; exit 1; }
+    log_d "mounted /dev/ubi${_pri_ubi}_0 to ${persist_cfg}"
+  else
+    log_d "found persist mounted"
+  fi
+  return 0
+  ;;
+"stop")
+  _pri_mtd=$(find_mtd persist) || { log_e "no persist mtd"; exit 1; }
+  _pri_ubi=$(find_ubi $_pri_mtd) || { log_d "detached"; exit 0; }
+  if grep -qs "/dev/ubi${_pri_ubi}_0 ${persist_cfg}" /proc/mounts; then
+    umount ${persist_cfg} || { log_e "umount ${persist_cfg}"; exit 1; }
+    log_d "umounted ${persist_cfg}"
+  fi
+  ubidetach -m ${_pri_mtd} || { log_e "ubidetach mtd${_pri_mtd}"; exit 1; }
+  log_d "ubidetached mtd${_pri_mtd}"
+  ;;
+*)
+  cat <<-EOHERE
+USAGE
+    `basename $0` [start | stop]
+
+OPTIONS
+    start  Start service
+    stop   Stop service
+
+EOHERE
+  ;;
+esac

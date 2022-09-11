@@ -1,33 +1,26 @@
 #!/bin/sh
 
-LogFile=/var/run/mdev-mount.log
+. /etc/init.d/func
 
-log_file () {
-  local eno=$?
-  if [ -z "$1" ]; then
-    echo "" >> $LogFile
-    date >> $LogFile
-  else
-    echo "$*" >> $LogFile
-  fi
-  return $eno
-}
+_pri_tag="mdev-mount"
 
-log_file
+log_d "$0 $*"
 
-log_file "$0 $*"
-log_file "env:"
-log_file `env`
+case "$1" in
+-l|--log)
+  exit 0
+  ;;
+esac
 
 case "$ACTION" in
 add)
   [ -z "${MDEV}" ] && exit 1
   cat /proc/mounts | awk '{print $1}' | grep "^/dev/${MDEV}$" || {
     [ -d "/media/${MDEV}" ] || mkdir -p /media/${MDEV}
-	mount -o sync /dev/${MDEV} /media/${MDEV} || {
-		log_e "Failed mount /dev/${MDEV} to /media/${MDEV}"
-		exit 1
-	}
+    mount -o sync /dev/${MDEV} /media/${MDEV} || {
+      log_e "Failed mount /dev/${MDEV} to /media/${MDEV}"
+      exit 1
+    }
   }
   exit 0
   ;;
@@ -36,7 +29,9 @@ remove)
   for i in `cat /proc/mounts | grep "${MDEV}" | cut -f 2 -d " "`; do
     umount $i
   done
-  [ -d /media/${MDEV} ] && rm -rf /media/${MDEV}
+  [ -d /media/${MDEV} ] && \
+    [ "`{ ls /media/${MDEV} | wc -l; } 2>/dev/null`" = "0" ] && \
+    rm -rf /media/${MDEV}
   exit 0
   ;;
 esac

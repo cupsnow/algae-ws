@@ -1,0 +1,110 @@
+#!/bin/sh
+
+. /etc/init.d/func
+
+_pri_tag="led"
+_pri_led_on=0
+_pri_led_off=1
+
+log_d "$0 $*"
+
+_pri_led_log="/var/run/led.log"
+log_f "$_pri_led_log"
+log_f "$_pri_led_log" "$0 $*"
+
+led_num () {
+  sed -n -E -e "s/^\s*$1\s*([0-9]+).*/\1/p" $led_cfg
+}
+
+led_set () {
+  [ $# -ge 2 ] || return
+
+  local gpio_val=$(as_num $2)
+  [ -n "$gpio_val" ] || gpio_val=$(positive1 $2)
+  [ -n "$gpio_val" ] || return
+
+  # refine for dipolarity
+  if [ "$gpio_val" = 0 ]; then
+    gpio_val=$_pri_led_off
+  elif [ "$gpio_val" = 1 ]; then
+    gpio_val=$_pri_led_on
+  fi
+
+  if pgrep ".*admin" &>/dev/null; then
+    cmd_run admin --ledconf=$1 --ledset=$gpio_val
+    return
+  fi
+
+  local gpio_line="$(as_num $1)"
+  [ -n "$gpio_line" ] || gpio_line="$(led_num led_${1})"
+  [ -n "$gpio_line" ] || return
+  cmd_run gpioset 0 ${gpio_line}=${gpio_val}
+}
+
+show_help () {
+cat <<-ENDHELP
+USAGE
+  $(basename $0) <LED> <SWITCH>
+
+LED
+  power, standby, wac
+
+SWITCH
+  1, on
+  0, off
+
+ENDHELP
+}
+
+case "$1" in
+-h|--help|"")
+  show_help
+  exit 1
+  ;;
+identify)
+  led_set standby ${2:-1}
+  exit
+  ;;
+wac)
+  _pri_sw="$(positive1 $2)"
+  if [ "$_pri_sw" = "0" ]; then
+    $0 normal
+    exit
+  fi
+  led_set standby 0
+  led_set power ${2:-2}
+  exit
+  ;;
+normal)
+  _pri_sw="$(positive1 $2)"
+  if [ "$_pri_sw" = "0" ]; then
+    $0 error
+    exit
+  fi
+  led_set standby 0
+  led_set power ${2:-1}
+  exit
+  ;;
+error|refactory)
+  _pri_sw="$(positive1 $2)"
+  if [ "$_pri_sw" = "0" ]; then
+    $0 off
+    exit
+  fi
+  led_set power 0
+  led_set standby ${2:-1}
+  exit
+  ;;
+on)
+  led_set standby ${2:-1}
+  led_set power ${2:-1}
+  exit
+  ;;
+off)
+  led_set standby ${2:-0}
+  led_set power ${2:-0}
+  exit
+  ;;
+esac
+
+led_set "$@"

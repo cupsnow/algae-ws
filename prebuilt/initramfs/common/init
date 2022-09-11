@@ -1,0 +1,12 @@
+#!/bin/sh
+
+[ -d /proc ] || mkdir -p /proc
+mount -t proc none /proc
+
+[ -d /sys ] || mkdir -p /sys
+mount -t sysfs none /sys
+
+[ -d /dev ] || mkdir -p /dev
+mount -t devtmpfs none /dev
+
+exec /bin/sh

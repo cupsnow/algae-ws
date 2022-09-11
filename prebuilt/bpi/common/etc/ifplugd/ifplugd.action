@@ -1,0 +1,47 @@
+#!/bin/sh
+
+. /etc/init.d/func
+
+_pri_tag="ifplugd-default[$$]"
+
+log_d "$0 $*"
+
+ifce=$1
+act=$2
+
+case $ifce in
+eth*)
+  # _pri_ct=20
+  # while pgrep main && [ "$_pri_ct" -gt 1 ]; do
+  #   log_d "The main manage script busy, retry $_pri_ct"
+  #   sleep 1
+  #   _pri_ct=$(( $_pri_ct - 1 ))
+  # done
+  # pgrep main && { log_d "The main manage script busy"; exit 1; }
+
+  if ifce_link_up $ifce; then
+    log_d "Expect siterole for $ifce"
+    if siterole -e $eth_cfg -i $ifce; then
+      log_d "$ifce connected, start airplay"
+      # kill_prog ".*adk|.*WACServer|.*hostapd|.*udhcpd"
+      /etc/init.d/airplay-initd start
+      exit 0
+    fi
+      log_d "$ifce failed connect"
+  elif [ "$act" == "up" ]; then
+    log_e "$ifce link state actually down"
+  fi
+  if [ "$act" == "down" ]; then
+    zcipwrapper $ifce stop
+    route_del_ifce $ifce
+    ip_del_ifce $ifce
+  fi
+  # log_d "Start main manage script"
+  # /etc/init.d/main &
+  exit
+  ;;
+wlan*)
+  ;;
+*)
+  ;;
+esac

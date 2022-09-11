@@ -4,3 +4,6 @@
 [submodule "package/fftest1"]
 	path = package/fftest1
 	url = git@github.com:cupsnow/fftest1.git
+[submodule "package/adm"]
+	path = package/adm
+	url = git@github.com:cupsnow/adm.git

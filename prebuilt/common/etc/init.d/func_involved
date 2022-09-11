@@ -8,9 +8,11 @@ accname_cfg="${persist_cfg}/acc_name"
 hostname_cfg="${persist_cfg}/hostname"
 wpasup_cfg="${persist_cfg}/wpa_supplicant.conf"
 eth_cfg="${persist_cfg}/eth.conf"
+wlan_cfg="${persist_cfg}/wlan.conf"
 macaddr_cfg="${persist_cfg}/macaddr.conf"
 spkcal_cfg="${persist_cfg}/spklatency"
 wol_cfg="${persist_cfg}/wol.conf"
+snhash_cfg="${persist_cfg}/snhash.conf"
 spkcal_raw="/var/run/spklatency"
 led_cfg="/etc/led.conf"
 oob_cfg="/etc/outofbox"
@@ -102,6 +104,14 @@ get_inient1 () {
 
 rm_inient1 () {
   sed -E -i -e "/^\s*$2\s*=.*/d" $1 2>/dev/null
+}
+
+file_size () {
+  [ -n "$1" ] || return 1
+  local msg=$(wc -c $1 2>/dev/null) || return 1
+  local sz=$(echo $msg | awk '{print $1;}')
+  local sz=$(as_num $sz)
+  [ -n "$sz" ] && echo $sz
 }
 
 macaddr_gen () {
@@ -294,6 +304,7 @@ wpa_wait () {
     sleep 1
     ct="$(( $ct - 1 ))"
   done
+  log_d "wpa_state: $wpast"
   echo $wpast
   [ "$wpast" == "COMPLETED" ]
 }
@@ -377,7 +388,7 @@ kill_prog () {
   pgrep -x "$_pri_pat" &>/dev/null || return 0
   local _pri_ct=5
   while [ $_pri_ct -gt 0 ]; do
-    log_sd "Checking remaining process (countdown $_pri_ct)"
+    log_d "Checking remaining process (countdown $_pri_ct)"
     sleep 0.3
     pgrep -x "$_pri_pat" &>/dev/null || return 0
     _pri_ct=$(( $_pri_ct - 1 ))
