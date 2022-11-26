@@ -1,60 +1,61 @@
 #!/usr/bin/env python3
-#%%
-# define functions
 
-import sys, os, json, logging, argparse
+import sys
+import os
+import json
+import logging
+import argparse
 
-projDir = os.getcwd()
+# import builder/builder.sh
+from builder import builder
 
-sys.path.append(os.path.join(projDir, "builder"))
-from builder import *
-
-logging.basicConfig(level=logging.NOTSET, format="[%(asctime)s][%(levelname)s][%(name)s][%(funcName)s][#%(lineno)d]%(message)s")
+logging.basicConfig(level=logging.NOTSET,
+                    format="[%(asctime)s][%(levelname)s][%(name)s][%(funcName)s][#%(lineno)d]%(message)s")
 
 logger = logging.getLogger("configure")
 
-appCfg = {
-	"deviceName": "algae",
-	"version": "0.1.2",
-	"hardware": "bpi",
-	"hardwareVersion": "0.1.1",
-	"model": "bbq3",
-	"modelSerial": "1",
-	"buildDir": "build",
-	"buildDir2": "../build",
-	"pkgDir": "package",
-	"pkgDir2": "..",
+app_cfg = {
+    "name": "algae",
+    "version": "0.1.2",
+    "hardware": "bpi-0.1.1",
+    "projdir": os.getcwd()
 }
 
+
 def populate():
-	jCfg = json.dumps(appCfg)
-	print("\nappCfg in json:\n{}".format(jCfg))
-	fn = os.path.join(projDir, "prebuilt/common/etc/algae.json")
+	cfg = {k: app_cfg[k] for k in ["name", "version", "hardware"]}
+	logger.debug(f"cfg: {cfg}")
+	cfg_jstr = json.dumps(cfg)
+	fn = os.path.join(app_cfg["projdir"], "prebuilt/common/etc/algae.json")
 	with open(fn, "w") as f:
-		f.write(jCfg)
+	f.write(cfg_jstr)
+	print(f"Generated {fn}: {cfg_jstr}")
 
-#%%
-# Start main
 
-def main (argv = sys.argv):
+def main(argv=sys.argv):
 	argc = len(argv)
-	argparser = argparse.ArgumentParser(prog=argv[0], description="Configure project")
-	argparser.add_argument("--populate", help="Populate configurations", action="store_true")
+	argparser = argparse.ArgumentParser(prog=os.path.basename(argv[0]),
+			formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+			description="Configure project")
+    argparser.add_argument("--populate", help="Populate configurations",
+			action="store_true")
 
 	if argc <= 1:
+		# output simple usage
 		argparser.print_usage()
 		sys.exit(0)
+
 	args = argparser.parse_args(argv[1:])
 	logger.debug("argc: {}, argv: {}".format(argc, args))
 
 	if args.populate:
 		populate()
 
+
 if __name__ == "__main__":
-	# jupyter?
-	if ipy := guessIpy():
-		logger.debug("guess ipython {}".format(ipy))
-		argv = ["configure.py", "--help"]
-		main(argv)
-	else:
-		main(sys.argv)
+    if ipy := builder.guess_ipy():
+        logger.debug("guess ipython {}".format(ipy))
+        argv = ["configure.py", "--help"]
+        main(argv)
+    else:
+        main(sys.argv)

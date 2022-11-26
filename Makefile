@@ -16,33 +16,20 @@ BUILDPARALLEL?=$(shell SYSCPUS=$$(nproc) \
 BUILDDIR2=$(abspath $(PROJDIR)/../build)
 PKGDIR2=$(abspath $(PROJDIR)/..)
 
-# build_host_nonroot
-ifneq ($(strip $(shell type -P raspi-config)),)
-APP_ATTR_BUILD_HOST=build_host_rpi build_host_rpi3b
-else ifeq ($(strip $(LSBID)),ubuntu)
-APP_ATTR_BUILD_HOST=build_host_ub20
-endif
-
 # ath9k_htc
-APP_ATTR_xm?=xm ath9k_htc
 APP_ATTR_bpi?=bpi ath9k_htc
 APP_ATTR_ub20?=ub20
 export APP_ATTR?=$(APP_ATTR_bpi) $(APP_ATTR_BUILD_HOST)
 
-APP_PLATFORM=$(strip $(filter xm bpi ub20,$(APP_ATTR)))
+APP_PLATFORM=$(strip $(filter bpi ub20,$(APP_ATTR)))
 
-ifneq ($(strip $(filter xm,$(APP_PLATFORM))),)
-APP_BUILD=arm
-else ifneq ($(strip $(filter bpi,$(APP_PLATFORM))),)
+ifneq ($(strip $(filter bpi,$(APP_PLATFORM))),)
 APP_BUILD=aarch64
 else
 APP_BUILD=$(APP_PLATFORM)
 endif
 
-ifneq ($(strip $(filter xm,$(APP_ATTR))),)
-$(eval $(call DECL_TOOLCHAIN_GCC,$(HOME)/07_sw/gcc-arm-none-linux-gnueabihf))
-EXTRA_PATH+=$(TOOLCHAIN_PATH:%=%/bin)
-else ifneq ($(strip $(filter bpi,$(APP_ATTR))),)
+ifneq ($(strip $(filter bpi,$(APP_ATTR))),)
 $(eval $(call DECL_TOOLCHAIN_GCC,$(HOME)/07_sw/gcc-aarch64-none-linux-gnu))
 $(eval $(call DECL_TOOLCHAIN_GCC,$(HOME)/07_sw/or1k-linux-musl,OR1K))
 EXTRA_PATH+=$(TOOLCHAIN_PATH:%=%/bin) $(OR1K_TOOLCHAIN_PATH:%=%/bin)
@@ -65,16 +52,15 @@ ifneq ("$(wildcard $(PROJDIR)/tool/bin/tic)","")
 BUILD_TINFO_ENV+=TERMINFO=$(PROJDIR)/tool/$(ncursesw_TINFODIR)
 endif
 
-ifneq ($(strip $(filter som1 wlsom1 sa7715,$(APP_PLATFORM))),)
-BUILD_CFLAGS_$(APP_PLATFORM)+=-march=armv7-a -mfloat-abi=hard
-BUILD_CFLAGS2_$(APP_PLATFORM)+=$(BUILD_CFLAGS_$(APP_PLATFORM)) -mfpu=vfpv4
+ifneq ($(strip $(V)),1)
+Q=@
 endif
 
 # $(info Makefile ... Variable summary:$(NEWLINE) \
-#     $(EMPTY) APP_ATTR: $(APP_ATTR), APP_PLATFORM: $(APP_PLATFORM)$(NEWLINE) \
-#     $(EMPTY) TOOLCHAIN_SYSROOT: $(TOOLCHAIN_SYSROOT)$(NEWLINE) \
-#     $(EMPTY) OR1K_TOOLCHAIN_SYSROOT: $(OR1K_TOOLCHAIN_SYSROOT)$(NEWLINE) \
-#     $(EMPTY) PATH=$(PATH))
+#   $(EMPTY) APP_ATTR: $(APP_ATTR), APP_PLATFORM: $(APP_PLATFORM)$(NEWLINE) \
+#   $(EMPTY) TOOLCHAIN_SYSROOT: $(TOOLCHAIN_SYSROOT)$(NEWLINE) \
+#   $(EMPTY) OR1K_TOOLCHAIN_SYSROOT: $(OR1K_TOOLCHAIN_SYSROOT)$(NEWLINE) \
+#   $(EMPTY) PATH=$(PATH))
 
 #------------------------------------
 #
@@ -83,12 +69,12 @@ help:
 	@echo "APP_ATTR: $(APP_ATTR)"
 	@echo "TOOLCHAIN_SYSROOT: $(TOOLCHAIN_SYSROOT)"
 	@echo "TOOLCHAIN_PATH: $(TOOLCHAIN_PATH)"
-ifneq ($(strip $(V)),)
+ifeq ($(strip $(V)),1)
 	$(BUILD_PKGCFG_ENV) pkg-config --list-all
 endif
 
-FORCE:# keep empty
-# keep empty
+FORCE:# keep this comment to work
+# # keep this comment to work
 
 #------------------------------------
 # dep: apt install dvipng imagemagick plantuml
@@ -98,12 +84,6 @@ pyvenv pyenv $(BUILDDIR)/pyenv:
 	. $(BUILDDIR)/pyenv/bin/activate && \
 	  python --version && \
 	  pip install -r requirements.txt
-
-pyvenv2 pyenv2 $(BUILDDIR)/pyenv2:
-	virtualenv -p python2 $(BUILDDIR)/pyenv2
-	. $(BUILDDIR)/pyenv2/bin/activate && \
-	  python --version && \
-	  pip install sphinx_rtd_theme six
 
 #------------------------------------
 # Device Tree Compiler v1.1-487-g6c02224
@@ -220,15 +200,17 @@ crust_%: $(crust_BUILDDIR)/.config
 ub_DIR?=$(PKGDIR2)/uboot
 ub_BUILDDIR?=$(BUILDDIR)/uboot-$(APP_PLATFORM)
 ub_PKGDEP=atf_bl31 crust_scp
-ub_DEF_MAKE?=$(MAKE) ARCH=arm CROSS_COMPILE=$(CROSS_COMPILE) \
-    KBUILD_OUTPUT=$(ub_BUILDDIR) CONFIG_TOOLS_DEBUG=1
-ifneq ($(strip $(filter bpi,$(APP_ATTR))),)
-ub_DEF_MAKE+=BL31=$(atf_BUILDDIR)/sun50i_a64/debug/bl31.bin \
+
+ub_DEF_MAKE_bpi+=BL31=$(atf_BUILDDIR)/sun50i_a64/debug/bl31.bin \
     SCP=$(or $(wildcard $(crust_BUILDDIR)/scp/scp.bin),/dev/null)
-endif
+
+ub_DEF_MAKE?=$(MAKE) ARCH=arm CROSS_COMPILE=$(CROSS_COMPILE) \
+    KBUILD_OUTPUT=$(ub_BUILDDIR) CONFIG_TOOLS_DEBUG=1 \
+	$(ub_DEF_MAKE_$(APP_PLATFORM))
+
 ub_MAKE=$(ub_DEF_MAKE) -C $(ub_BUILDDIR)
 
-ub_mrproper ub_help:
+ub_help:
 	$(ub_DEF_MAKE) -C $(ub_DIR) $(@:ub_%=%)
 
 # failed to build out-of-tree as of -f for linux
@@ -245,12 +227,8 @@ bpi_ub_defconfig: DOTCFG=$(PROJDIR)/bananapi_m64_defconfig
 bpi_ub_defconfig: DEFCFG=bananapi_m64_defconfig
 bpi_ub_defconfig: APP_PLATFORM_ub_defconfig
 
-xm_ub_defconfig: DOTCFG=$(PROJDIR)/uboot_omap3_beagle.config
-xm_ub_defconfig: DEFCFG=omap3_beagle_defconfig
-xm_ub_defconfig: APP_PLATFORM_ub_defconfig
-
 ub_defconfig $(ub_BUILDDIR)/.config:
-	$(MAKE) ub_mrproper
+	$(ub_DEF_MAKE) -C $(ub_DIR) mrproper
 	$(MAKE) $(APP_PLATFORM)_ub_defconfig
 
 ub_distclean:
@@ -259,10 +237,8 @@ ub_distclean:
 # dep: apt install dvipng imagemagick texlive-latex-extra
 #      pip install sphinx_rtd_theme six
 ub_htmldocs: | $(BUILDDIR)/pyenv $(ub_BUILDDIR)/.config
-ifeq ("$(NB)","")
 	. $(BUILDDIR)/pyenv/bin/activate && \
 	  $(ub_MAKE) htmldocs
-endif
 	tar -Jcvf $(BUILDDIR)/uboot-docs.tar.xz --show-transformed-names \
 	  --transform="s/output/uboot-docs/" -C $(ub_BUILDDIR)/doc \
 	  output
@@ -271,7 +247,7 @@ ub_tools_install: DESTDIR=$(PROJDIR)/tool
 ub_tools_install: ub_tools
 	[ -d $(DESTDIR)/bin ] || $(MKDIR) $(DESTDIR)/bin
 	cd $(ub_BUILDDIR)/tools && \
-	  rsync -avR --info=progress2 \
+	  rsync -avR --info=progress --ignore-missing-args \
 	    dumpimage fdtgrep gen_eth_addr gen_ethaddr_crc mkenvimage mkimage \
 		proftool spl_size_limit \
 		$(DESTDIR)/bin/
@@ -297,22 +273,21 @@ ub_%: $(ub_BUILDDIR)/.config
 #
 linux_DIR?=$(PKGDIR2)/linux
 linux_BUILDDIR?=$(BUILDDIR2)/linux-$(APP_PLATFORM)
-linux_DEF_MAKE1?=$(MAKE) $(linux_DEF_MAKEPARAM1_$(APP_PLATFORM)) \
+
+linux_DEF_MAKEPARAM_bpi+=ARCH=arm64
+
+linux_DEF_MAKE?=$(MAKE) $(linux_DEF_MAKEPARAM_$(APP_PLATFORM)) \
     CROSS_COMPILE=$(CROSS_COMPILE)
-linux_DEF_MAKE?=$(linux_DEF_MAKE1) $(linux_DEF_MAKEPARAM_$(APP_PLATFORM)) \
-    O=$(linux_BUILDDIR) \
+
+linux_MAKE=$(linux_DEF_MAKE) O=$(linux_BUILDDIR) \
     INSTALL_HDR_PATH=$(or $(INSTALL_HDR_PATH),$(DESTDIR)) \
 	INSTALL_MOD_PATH=$(or $(INSTALL_MOD_PATH),$(DESTDIR)) \
-	LOADADDR=$(LOADADDR) CONFIG_INITRAMFS_SOURCE="$(CONFIG_INITRAMFS_SOURCE)"
-
-linux_DEF_MAKEPARAM1_bpi+=ARCH=arm64
-linux_DEF_MAKEPARAM1_xm+=ARCH=arm
-
-linux_MAKE=$(linux_DEF_MAKE) $(linux_MAKEPARAM_$(APP_PLATFORM)) -C $(linux_BUILDDIR)
-linux_kernelrelease=$(shell PATH=$(PATH) $(linux_MAKE) -s kernelrelease)
+	LOADADDR=$(LOADADDR) \
+	CONFIG_INITRAMFS_SOURCE="$(CONFIG_INITRAMFS_SOURCE)" \
+	$(linux_MAKEPARAM_$(APP_PLATFORM)) -C $(linux_BUILDDIR)
 
 linux_mrproper linux_help:
-	$(linux_DEF_MAKE1) -C $(linux_DIR) $(@:linux_%=%)
+	$(linux_DEF_MAKE) -C $(linux_DIR) $(@:linux_%=%)
 
 APP_PLATFORM_linux_defconfig:
 	$(MAKE) linux_mrproper
@@ -326,11 +301,8 @@ APP_PLATFORM_linux_defconfig:
 
 bpi_linux_defconfig: DOTCFG=$(PROJDIR)/linux_bpi.config
 bpi_linux_defconfig: DEFCFG=defconfig
-bpi_linux_defconfig: APP_PLATFORM_linux_defconfig
 
-xm_linux_defconfig: DOTCFG=$(PROJDIR)/linux_omap2plus.config
-xm_linux_defconfig: DEFCFG=omap2plus_defconfig # multi_v7_defconfig, omap2plus_defconfig
-xm_linux_defconfig: APP_PLATFORM_linux_defconfig
+$(APP_PLATFORM)_linux_defconfig: APP_PLATFORM_linux_defconfig
 
 linux_defconfig $(linux_BUILDDIR)/.config:
 	$(MAKE) linux_mrproper
@@ -342,10 +314,8 @@ linux_distclean:
 # dep: apt install dvipng imagemagick
 #      pip install sphinx_rtd_theme six
 linux_htmldocs: | $(BUILDDIR)/pyenv $(linux_BUILDDIR)/.config
-ifeq ("$(NB)","")
 	. $(BUILDDIR)/pyenv/bin/activate && \
 	  $(linux_MAKE) htmldocs
-endif
 	tar -Jcvf $(BUILDDIR)/linux-docs.tar.xz --show-transformed-names \
 	  --transform="s/output/linux-docs/" -C $(linux_BUILDDIR)/Documentation \
 	  output
@@ -354,14 +324,9 @@ linux_modules_install: INSTALL_MOD_PATH=$(BUILD_SYSROOT)
 
 linux_headers_install: INSTALL_HDR_PATH=$(BUILD_SYSROOT)
 
-bpi_linux_LOADADDR?=0x40200000
-
-xm_linux_LOADADDR?=0x81000000
-
-linux_uImage: LOADADDR?=$(APP_PLATFORM)_linux_LOADADDR
-
+# linux_kernelrelease=$(shell PATH=$(PATH) $(linux_MAKE) -s kernelrelease)
 kernelrelease=$(BUILDDIR)/kernelrelease-$(APP_PLATFORM)
-linux_kernelrelease $(kernelrelease):
+kernelrelease $(kernelrelease):
 	[ -d $(dir $(kernelrelease)) ] || $(MKDIR) $(dir $(kernelrelease))
 	"make" -s --no-print-directory linux_kernelrelease > $(kernelrelease)
 
@@ -393,11 +358,8 @@ APP_PLATFORM_bb_defconfig:
 	  yes "" | $(bb_DEF_MAKE) O=$(bb_BUILDDIR) -C $(bb_DIR) defconfig; \
 	fi
 
-ifneq ($(strip $(filter ub20,$(APP_ATTR))),)
-$(APP_PLATFORM)_bb_defconfig: DOTCFG=$(PROJDIR)/busybox_ub20.config
-else
-$(APP_PLATFORM)_bb_defconfig: DOTCFG=$(PROJDIR)/busybox.config
-endif
+ub20_bb_defconfig: DOTCFG=$(PROJDIR)/busybox_ub20.config
+
 $(APP_PLATFORM)_bb_defconfig: APP_PLATFORM_bb_defconfig
 
 bb_defconfig $(bb_BUILDDIR)/.config:
@@ -429,41 +391,13 @@ bb_%: $(bb_BUILDDIR)/.config
 
 #------------------------------------
 #
-cryptodev_DIR=$(PKGDIR2)/cryptodev-linux
-cryptodev_BUILDDIR?=$(BUILDDIR2)/cryptodev-$(APP_BUILD)
-cryptodev_MAKE=$(linux_MAKE) M=$(cryptodev_BUILDDIR)
-
-cryptodev_defconfig $(cryptodev_BUILDDIR)/Makefile:
-	[ -e $(cryptodev_BUILDDIR) ] || $(MKDIR) $(cryptodev_BUILDDIR)
-	$(CP) $(cryptodev_DIR)/* $(cryptodev_BUILDDIR)/
-	$(MAKE) -C $(cryptodev_BUILDDIR) version.h
-
-cryptodev_modules_install: DESTDIR=$(BUILD_SYSROOT)
-
-cryptodev_install: cryptodev_modules
-	$(MAKE) cryptodev_modules_install
-
-cryptodev: $(cryptodev_BUILDDIR)/Makefile
-	$(cryptodev_MAKE) $(BUILDPARALLEL:%=-j%)
-
-cryptodev_%: $(cryptodev_BUILDDIR)/Makefile
-	$(cryptodev_MAKE) $(BUILDPARALLEL:%=-j%) $(@:cryptodev_%=%)
-
-#------------------------------------
-#
 libasound_CFGPARAM_$(APP_PLATFORM)+=--disable-topology
-$(eval $(call AC_BUILD3_HEAD,libasound \
-    $(PKGDIR2)/alsa-lib \
-	$(BUILDDIR2)/libasound-$(APP_BUILD)))
-$(eval $(call AC_BUILD3_DEFCONFIG,libasound))
+
+$(eval $(call AC_BUILD2,libasound $(PKGDIR2)/alsa-lib $(BUILDDIR2)/libasound-$(APP_BUILD)))
 
 libasound_footprint $(libasound_BUILDDIR)_footprint:
 	[ -d $(dir $(libasound_BUILDDIR)_footprint) ] || $(MKDIR) $(dir $(libasound_BUILDDIR)_footprint)
 	echo "--disable-topology" > $(libasound_BUILDDIR)_footprint
-
-$(eval $(call AC_BUILD3_DIST_INSTALL,libasound))
-$(eval $(call AC_BUILD3_DISTCLEAN,libasound))
-$(eval $(call AC_BUILD3_FOOT,libasound))
 
 #------------------------------------
 #
@@ -493,18 +427,13 @@ zlib__footprint $(zlib_BUILDDIR)_footprint:
 	[ -d $(dir $(zlib_BUILDDIR)_footprint) ] || $(MKDIR) $(dir $(zlib_BUILDDIR)_footprint)
 	echo "-fPIC" > $(zlib_BUILDDIR)_footprint
 
-# zlib_dist_install: DESTDIR=$(BUILD_SYSROOT)
-# zlib_dist_install:
-# 	echo "-fPIC" > $(zlib_BUILDDIR)_footprint
-# 	$(call RUN_DIST_INSTALL1,zlib,$(zlib_BUILDDIR)/configure.log)
-
 $(eval $(call AC_BUILD3_DIST_INSTALL,zlib,$(zlib_BUILDDIR)/configure.log))
 
 zlib: $(zlib_BUILDDIR)/configure.log
-	$(zlib_MAKE)
+	$(zlib_MAKE) $(BUILDPARALLEL:%=-j%)
 
 zlib_%: $(zlib_BUILDDIR)/configure.log
-	$(zlib_MAKE) $(patsubst _%,%,$(@:zlib%=%))
+	$(zlib_MAKE) $(BUILDPARALLEL:%=-j%) $(patsubst _%,%,$(@:zlib%=%))
 
 #------------------------------------
 #
@@ -520,16 +449,18 @@ $(eval $(call AC_BUILD2,libacl $(PKGDIR2)/acl $(BUILDDIR2)/acl-$(APP_BUILD)))
 #
 lzo_CFGPARAM_$(APP_PLATFORM)+=--enable-shared
 
-$(eval $(call AC_BUILD3_HEAD,lzo $(PKGDIR2)/lzo $(BUILDDIR2)/lzo-$(APP_BUILD)))
-$(eval $(call AC_BUILD3_DEFCONFIG,lzo))
+$(eval $(call AC_BUILD2,lzo $(PKGDIR2)/lzo $(BUILDDIR2)/lzo-$(APP_BUILD)))
+
+# $(eval $(call AC_BUILD3_HEAD,lzo $(PKGDIR2)/lzo $(BUILDDIR2)/lzo-$(APP_BUILD)))
+# $(eval $(call AC_BUILD3_DEFCONFIG,lzo))
 
 lzo_footprint $(lzo_BUILDDIR)_footprint:
 	[ -d $(dir $(lzo_BUILDDIR)_footprint) ] || $(MKDIR) $(dir $(lzo_BUILDDIR)_footprint)
 	echo "--enable-shared" > $(lzo_BUILDDIR)_footprint
 
-$(eval $(call AC_BUILD3_DIST_INSTALL,lzo))
-$(eval $(call AC_BUILD3_DISTCLEAN,lzo))
-$(eval $(call AC_BUILD3_FOOT,lzo))
+# $(eval $(call AC_BUILD3_DIST_INSTALL,lzo))
+# $(eval $(call AC_BUILD3_DISTCLEAN,lzo))
+# $(eval $(call AC_BUILD3_FOOT,lzo))
 
 #------------------------------------
 #
@@ -687,10 +618,11 @@ systemd_defconfig $(systemd_BUILDDIR)/build.ninja:
 		  --prefix=/ --sysconfdir=/etc \
 	      --localstatedir=/var -Dblkid=true -Dbuildtype=release \
 		  -Ddefault-dnssec=no -Dfirstboot=false -Dinstall-tests=false \
-          -Dkmod-path=/bin/kmod -Dldconfig=false \
-		  -Dtelinit-path=/bin/systemctl \
-          -Drootprefix= -Drootlibdir=/lib -Dsplit-usr=true \
-		  -Dsulogin-path=/sbin/sulogin -Dsysusers=false \
+          -Dldconfig=false -Drootprefix= -Drootlibdir=/lib -Dsplit-usr=true \
+		  -Dsysusers=false \
+		  -Dkmod-path=/bin/kmod -Dtelinit-path=/bin/systemctl \
+		  -Dsulogin-path=/sbin/sulogin -Dmount-path=/bin/mount \
+		  -Dumount-path=/bin/umount \
 		  -Db_lto=false -Drpmmacrosdir=no \
 		  -Dc_args="-I$(BUILD_SYSROOT)/include" \
 		  -Dc_link_args="-L$(BUILD_SYSROOT)/lib -luuid" \
@@ -818,12 +750,85 @@ $(eval $(call AC_BUILD3_DISTCLEAN,mtdutil))
 $(eval $(call AC_BUILD3_FOOT,mtdutil))
 
 #------------------------------------
+# zstd-1.5.2
+#
+libzstd_DIR=$(PKGDIR2)/libzstd
+libzstd_BUILDDIR=$(BUILDDIR2)/libzstd-$(APP_BUILD)
+libzstd_MAKE=$(MAKE) CC=$(CC) AR=$(AR) prefix=/ \
+    -C $(libzstd_BUILDDIR)
+
+libzstd_defconfig $(libzstd)/Makefile:
+	[ -d $(libzstd_BUILDDIR) ] || $(MKDIR) $(libzstd_BUILDDIR)
+	$(CP) $(libzstd_DIR)/* $(libzstd_BUILDDIR)/
+
+
+libzstd_install: DESTDIR=$(BUILD_SYSROOT)
+
+libzstd_dist_install: DESTDIR=$(BUILD_SYSROOT)
+libzstd_dist_install:
+	$(RM) $(libzstd_BUILDDIR)_footprint
+	$(call RUN_DIST_INSTALL1,libzstd,$(libzstd_BUILDDIR)/Makefile)
+
+libzstd: | $(libzstd)/Makefile
+	$(libzstd_MAKE)
+
+libzstd_%: | $(libzstd)/Makefile
+	$(libzstd_MAKE) $(@:libzstd_%=%)
+
+#------------------------------------
 # gmp-6.2.1
 #
 ifneq ($(strip $(BUILD_CFLAGS2_$(APP_PLATFORM))),)
-gmp_CFGPARAM_$(APP_PLATFORM)+="CFLAGS=$(BUILD_CFLAGS2_$(APP_PLATFORM))"
+libgmp_CFGPARAM_$(APP_PLATFORM)+="CFLAGS=$(BUILD_CFLAGS2_$(APP_PLATFORM))"
 endif
-$(eval $(call AC_BUILD2,gmp $$(PKGDIR2)/gmp $$(BUILDDIR2)/gmp-$(APP_BUILD)))
+$(eval $(call AC_BUILD2,libgmp $$(PKGDIR2)/libgmp $$(BUILDDIR2)/libgmp-$(APP_BUILD)))
+
+#------------------------------------
+# isl-0.25
+#
+ifneq ($(strip $(BUILD_CFLAGS2_$(APP_PLATFORM))),)
+libisl_CFGPARAM_$(APP_PLATFORM)+="CFLAGS=$(BUILD_CFLAGS2_$(APP_PLATFORM))"
+endif
+$(eval $(call AC_BUILD2,libisl $$(PKGDIR2)/libisl $$(BUILDDIR2)/libisl-$(APP_BUILD)))
+
+#------------------------------------
+# mpfr-4.1.0
+#
+ifneq ($(strip $(BUILD_CFLAGS2_$(APP_PLATFORM))),)
+libmpfr_CFGPARAM_$(APP_PLATFORM)+="CFLAGS=$(BUILD_CFLAGS2_$(APP_PLATFORM))"
+endif
+$(eval $(call AC_BUILD2,libmpfr $$(PKGDIR2)/libmpfr $$(BUILDDIR2)/libmpfr-$(APP_BUILD)))
+
+#------------------------------------
+# mpc-1.2.1
+# dep: mpfr, gmp
+#
+ifneq ($(strip $(BUILD_CFLAGS2_$(APP_PLATFORM))),)
+libmpc_CFGPARAM_$(APP_PLATFORM)+="CFLAGS=$(BUILD_CFLAGS2_$(APP_PLATFORM))"
+endif
+$(eval $(call AC_BUILD2,libmpc $$(PKGDIR2)/libmpc $$(BUILDDIR2)/libmpc-$(APP_BUILD)))
+
+#------------------------------------
+# binutils-2.39
+# dep: mpc, isl
+#
+ifneq ($(strip $(BUILD_CFLAGS2_$(APP_PLATFORM))),)
+binutils_CFGPARAM_$(APP_PLATFORM)+="CFLAGS=$(BUILD_CFLAGS2_$(APP_PLATFORM))"
+endif
+binutils_CFGPARAM_$(APP_PLATFORM)+=--target=$$(uname -m)-algae-linux-gnu
+$(eval $(call AC_BUILD2,binutils $$(PKGDIR2)/binutils $$(BUILDDIR2)/binutils-$(APP_BUILD)))
+
+#------------------------------------
+# gcc-12.2.0
+# dep: mpc, mpfr, gmp, isl
+#
+ifneq ($(strip $(BUILD_CFLAGS2_$(APP_PLATFORM))),)
+gcc_CFGPARAM_$(APP_PLATFORM)+="CFLAGS=$(BUILD_CFLAGS2_$(APP_PLATFORM))"
+endif
+gcc_CFGPARAM_$(APP_PLATFORM)+=--target=$$(uname -m)-algae-linux-gnu
+gcc_CFGPARAM_$(APP_PLATFORM)+=--enable-languages=c,c++
+
+$(eval $(call AC_BUILD2,gcc $$(PKGDIR2)/gcc $$(BUILDDIR2)/gcc-$(APP_BUILD)))
 
 #------------------------------------
 # opt
@@ -1189,7 +1194,7 @@ ath9k_install: DESTDIR=$(BUILD_SYSROOT)
 ath9k_install: FW_PREFIX=/lib/firmware/ath9k_htc
 ath9k_install:
 	[ -d $(DESTDIR)$(FW_PREFIX) ] || $(MKDIR) $(DESTDIR)$(FW_PREFIX)
-	@rsync -avv /lib/firmware/ath9k_htc/htc_9271-1.4.0.fw \
+	@rsync -av --info=progress /lib/firmware/ath9k_htc/htc_9271-1.4.0.fw \
 	    $(DESTDIR)$(FW_PREFIX)/
 
 #------------------------------------
@@ -1580,11 +1585,10 @@ ub20_dist:
 	$(MAKE) zlib_install libasound_install
 	$(MAKE) ncursesw_install
 	$(MAKE) libnl_install alsautils_install ff_dist_install openssl_install
-	# $(MAKE) mdns_install iw_install
+	$(MAKE) iw_install
 	$(MAKE) wpasup_install
-	# $(MAKE) fdkaac_install
 
-$(addsuffix _dist_dtb,bpi):
+bpi_dist_dtb:
 	@[ -d $(dist_DIR)/boot ] || $(MKDIR) $(dist_DIR)/boot
 	if [ -f "$(dist_dts)" ]; then \
 	  echo -e "$(ANSI_GREEN)Compile linux device tree$(ANSI_NORMAL)"; \
@@ -1614,24 +1618,24 @@ bpi_dist_initramfs: | $(kernelrelease)
 	$(MAKE) $(BUILDPARALLEL:%=-j%) ub_envtools_install linux_headers_install \
 	    linux_modules_install zlib_dist_install
 	[ -d $(dist_DIR)/boot ] || $(MKDIR) $(dist_DIR)/boot
-	rsync -av $(ub_BUILDDIR)/u-boot-sunxi-with-spl.bin \
+	rsync -av --info=progress $(ub_BUILDDIR)/u-boot-sunxi-with-spl.bin \
 	    $(linux_BUILDDIR)/arch/arm64/boot/Image.gz $(dist_dtb) \
 	    $(dist_DIR)/boot/
 	$(MAKE) dist_dtb
 	[ -d $(BUILDDIR)/initramfs ] || $(MKDIR) $(BUILDDIR)/initramfs
 	cd $(TOOLCHAIN_SYSROOT) && \
-	  rsync -avR --ignore-missing-args \
+	  rsync -avR --info=progress --ignore-missing-args \
 	      $(foreach i,audit/ gconv/ locale/ libasan.* libgfortran.* libubsan.* \
 		    *.a *.o *.la,--exclude="${i}") \
 	      lib lib64 usr/lib usr/lib64 \
 	      $(BUILDDIR)/initramfs/
 	cd $(TOOLCHAIN_SYSROOT) && \
-	  rsync -avR --ignore-missing-args \
+	  rsync -avR --info=progress --ignore-missing-args \
 	      $(foreach i,sbin/sln usr/bin/gdbserver,--exclude="${i}") \
 	      sbin usr/bin usr/sbin \
 	      $(BUILDDIR)/initramfs/
 	$(MAKE) DESTDIR=$(BUILDDIR)/initramfs bb_dist_install
-	$(RSYNC) $(PROJDIR)/prebuilt/initramfs/common/* $(BUILDDIR)/initramfs/
+	rsync -av --info=progress --ignore-missing-args $(PROJDIR)/prebuilt/initramfs/common/* $(BUILDDIR)/initramfs/
 	echo -n "" > $(BUILDDIR)/devlist
 	echo "dir /dev 0755 0 0" >> $(BUILDDIR)/devlist
 	echo "nod /dev/console 0600 0 0 c 5 1" >> $(BUILDDIR)/devlist
@@ -1647,7 +1651,7 @@ bpi_dist_initramfs: | $(kernelrelease)
 rootfs: ROOTFSDIR=$(dist_DIR)/rootfs
 rootfs $(dist_DIR)/rootfs:
 	@for i in dev proc root mnt media sys tmp var/run var/lock \
-	    lib/firmware lib64 libx usr/lib usr/lib64 usr/libx; do \
+	    lib/firmware lib64 usr/lib usr/lib64; do \
 	  [ -d $(or $(ROOTFSDIR),$@)/$$i ] || $(MKDIR) $(or $(ROOTFSDIR),$@)/$$i; \
 	done
 
@@ -1678,7 +1682,7 @@ endif
 	    ncursesw_terminfo_dist_install
 	@echo -e "$(ANSI_GREEN)Install booting files$(ANSI_NORMAL)"
 	@[ -d $(dist_DIR)/boot ] || $(MKDIR) $(dist_DIR)/boot
-	@rsync -av $(ub_BUILDDIR)/u-boot-sunxi-with-spl.bin \
+	@rsync -av --info=progress $(ub_BUILDDIR)/u-boot-sunxi-with-spl.bin \
 	    $(linux_BUILDDIR)/arch/arm64/boot/Image.gz $(dist_dtb) \
 	    $(dist_DIR)/boot/
 	$(MAKE) $(@)_dtb
@@ -1697,26 +1701,27 @@ endif
 		-o $(dist_DIR)/boot/uboot.env $(BUILDDIR)/uboot.env.txt
 	@chmod 664 $(dist_DIR)/boot/uboot.env
 	@echo -e "$(ANSI_GREEN)Start populate rootfs$(ANSI_NORMAL)"
+	@[ -d $(dist_DIR)/rootfs ] || $(MKDIR) $(dist_DIR)/rootfs
 	@for i in lib lib64 usr/lib usr/lib64; do \
-	  cd $(TOOLCHAIN_SYSROOT) && rsync -av --ignore-missing-args \
+	  cd $(TOOLCHAIN_SYSROOT) && rsync -av --info=progress --ignore-missing-args \
 	      $(foreach i,audit/ gconv/ locale/ libasan.* libgfortran.* libubsan.* \
 	      	*.a *.o *.la,--exclude="${i}") \
 	      $$i/* $(dist_DIR)/rootfs/$$i/; \
 	done
-	@cd $(TOOLCHAIN_SYSROOT) && rsync -avR --ignore-missing-args \
+	@cd $(TOOLCHAIN_SYSROOT) && rsync -avR --info=progress --ignore-missing-args \
 	    $(foreach i,sbin/sln usr/bin/gdbserver,--exclude="${i}") \
 	    sbin usr/bin usr/sbin $(dist_DIR)/rootfs/
 	for i in lib lib64 usr/lib usr/lib64; do \
 	  [ -e $(BUILD_SYSROOT)/$$i ] || continue; \
-	  cd $(BUILD_SYSROOT) && rsync -av --ignore-missing-args \
+	  cd $(BUILD_SYSROOT) && rsync -av --info=progress --ignore-missing-args \
 	      --exclude="*.a" --exclude="*.la" --exclude="*.o" \
 	      $$i/* $(dist_DIR)/rootfs/$$i/; \
 	done
-	@cd $(BUILD_SYSROOT) && rsync -avR --ignore-missing-args \
+	@cd $(BUILD_SYSROOT) && rsync -avR --info=progress --ignore-missing-args \
 	    $(foreach i,bin/amidi etc/xattr.conf share/aclocal share/doc \
 	    share/ffmpeg share/locale share/man share/sounds,--exclude="${i}") \
 	    etc bin sbin share usr/bin usr/sbin usr/share var linuxrc $(dist_DIR)/rootfs/
-	@rsync -av $(wlregdb_DIR)/regulatory.db $(wlregdb_DIR)/regulatory.db.p7s \
+	@rsync -av --info=progress $(wlregdb_DIR)/regulatory.db $(wlregdb_DIR)/regulatory.db.p7s \
 	    $(dist_DIR)/rootfs/lib/firmware/
 	$(MAKE) DESTDIR=$(dist_DIR)/rootfs ap6212_install
 ifneq ($(strip $(filter ath9k_htc,$(APP_ATTR))),)
@@ -1725,9 +1730,9 @@ endif
 	@$(MAKE) dist_strip_DIR=$(dist_DIR)/rootfs/ dist_strip_log=$(dist_log) \
 	    dist_strip
 	@echo -e "$(ANSI_GREEN)Install prebuilt$(ANSI_NORMAL)"
-	@rsync -av -I $(wildcard $(PROJDIR)/prebuilt/common/*) \
+	@rsync -av --info=progress -I $(wildcard $(PROJDIR)/prebuilt/common/*) \
 	    $(dist_DIR)/rootfs/
-	@rsync -av -I $(wildcard $(PROJDIR)/prebuilt/$(APP_PLATFORM)/common/*) \
+	@rsync -av --info=progress -I $(wildcard $(PROJDIR)/prebuilt/$(APP_PLATFORM)/common/*) \
 	    $(dist_DIR)/rootfs/
 	$(CP) $(dist_DIR)/rootfs/etc/skel/.profile $(dist_DIR)/rootfs/etc/skel/.exrc \
 	    $(dist_DIR)/rootfs/etc/skel/.tmux.conf \
@@ -1744,172 +1749,30 @@ endif
 	fi
 	$(MAKE) $(APP_PLATFORM)_dist_systemdinit
 
+bpi_dist_sysvinit:
+
 bpi_dist_systemdinit:
 	if [ ! -f $(dist_DIR)/rootfs/lib/systemd/systemd ]; then \
 	  false "No systemd"; \
 	fi
 	$(RM) $(dist_DIR)/rootfs/sbin/init
 	ln -sf ../lib/systemd/systemd $(dist_DIR)/rootfs/sbin/init
+	@rsync -av --info=progress -I $(wildcard $(PROJDIR)/prebuilt/systemdinit/*) \
+	    $(dist_DIR)/rootfs/
+	@rsync -av --info=progress -I $(wildcard $(PROJDIR)/prebuilt/$(APP_PLATFORM)/systemdinit/*) \
+	    $(dist_DIR)/rootfs/
+	for i in blkid cap dbus-1 fdisk mount pamc pam_misc pam pcre2-8 \
+ 	    pcre2-posix psx smartcols uuid acl attr crypto ssl; do \
+	  for j in `find $(dist_DIR)/rootfs/lib/ -iname lib$${i}.so*`; do \
+	    ln -sf -v ../lib/$$(basename $${j}) $(dist_DIR)/rootfs/lib64/; \
+	  done; \
+	done
 
 # sudo dd if=$(dist_DIR)/boot/u-boot-sunxi-with-spl.bin of=/dev/sdxxx bs=1024 seek=8
 bpi_dist_sd:
-	rsync -av $(dist_DIR)/boot/* /media/$(USER)/BOOT/
-	rsync -av $(dist_DIR)/rootfs/* /media/$(USER)/rootfs/
+	rsync -av --info=progress $(dist_DIR)/boot/* /media/$(USER)/BOOT/
+	rsync -av --info=progress $(dist_DIR)/rootfs/* /media/$(USER)/rootfs/
 	sync; sync
-
-xm_dist: dist_DTINCDIR+=$(linux_DIR)/arch/arm/boot/dts
-xm_dist: xm_dist_dts=$(PROJDIR)/omap3-beagle-xm-ab.dts
-xm_dist: xm_dist_dtb=$(linux_BUILDDIR)/arch/arm/boot/dts/omap3-beagle-xm-ab.dtb
-xm_dist: xm_dist_linux_LOADADDR?=0x81000000# 0x82000000
-xm_dist: xm_dist_dtb_LOADADDR?=0x82000000# 0x83000000
-xm_dist: xm_dist_initramfs_LOADADDR?=0x82100000# 0x83100000
-xm_dist:
-	$(MAKE) ub linux_bzImage linux_dtbs
-	$(MAKE) bb_install libc1_install
-	[ -d $(dist_DIR)/boot ] || $(MKDIR) $(dist_DIR)/boot
-	$(CP) $(ub_BUILDDIR)/MLO $(ub_BUILDDIR)/u-boot.img \
-	  $(linux_BUILDDIR)/arch/arm/boot/zImage $(xm_dist_dtb) \
-	  $(linux_BUILDDIR)/arch/arm/boot/dts/omap3-beagle-xm.dtb \
-	  $(dist_DIR)/boot/
-	[ -f "$($(APP_PLATFORM)_dist_dts)" ] && \
-	  $(call CPPDTS) $(addprefix -I,$(dist_DTINCDIR)) \
-	    -o $(BUILDDIR)/$(notdir $($(APP_PLATFORM)_dist_dts)) \
-	    $($(APP_PLATFORM)_dist_dts) && \
-	  $(call DTC2) $(addprefix -i,$(dist_DTINCDIR)) \
-	    -o $(dist_DIR)/boot/$(basename $(notdir $($(APP_PLATFORM)_dist_dts))).dtb \
-	    $(BUILDDIR)/$(notdir $($(APP_PLATFORM)_dist_dts))
-	# cat <<-EOFF > $(PROJDIR)/build/abc
-	#   setenv bootargs console=ttyS2,115200n8 root=/dev/mmcblk0p2 rw rootwait; \
-	#   setenv loadaddr 0x81000000; setenv fdtaddr 0x82000000; \
-	#   fatload mmc 0:1 ${loadaddr} /zImage; fatload mmc 0:1 ${fdtaddr} /omap3-beagle-xm-ab.dtb; bootz ${loadaddr} - ${fdtaddr}; \
-	# EOFF
-
-xm_dist_sd:
-	$(CP) $(dist_DIR)/boot/* /media/$(USER)/BOOT/
-	$(CP) $(BUILD_SYSROOT)/* /media/$(USER)/rootfs/
-
-xm_boot_tools:
-	[ -d $(PROJDIR)/tool/bin ] || $(MKDIR) $(PROJDIR)/tool/bin
-	$(CP) $(ub_BUILDDIR)/tools/mkimage $(PROJDIR)/tool/bin/
-	$(dtc_MAKE) DESTDIR= PREFIX=$(PROJDIR)/tool install
-
-xm_boot_initramfs: xm_boot_SYSROOT?=$(shell $(CC) -print-sysroot)
-xm_boot_initramfs:
-	[ -d "$(BUILDDIR_INITRAMFS_ROOTFS)" ] || $(MKDIR) $(BUILDDIR_INITRAMFS_ROOTFS)
-	echo -n "" > $(BUILDDIR_INITRAMFS)/devlist
-	echo "dir /dev 0755 0 0" >> $(BUILDDIR_INITRAMFS)/devlist
-	echo "nod /dev/console 0600 0 0 c 5 1" >> $(BUILDDIR_INITRAMFS)/devlist
-	$(bb_MAKE) CONFIG_PREFIX=$(BUILDDIR_INITRAMFS_ROOTFS) \
-	  install
-	for i in $(PROJDIR)/prebuilt/common/ \
-	  $(PROJDIR)/prebuilt/initramfs/ ; do \
-	    [ -n "`ls -A $${i}`" ] && $(CP) $${i}/* $(BUILDDIR_INITRAMFS_ROOTFS) || \
-	      true; \
-	done
-	[ -d $(BUILDDIR_INITRAMFS_ROOTFS)/lib ] || $(MKDIR) $(BUILDDIR_INITRAMFS_ROOTFS)/lib
-	cd $(xm_boot_SYSROOT)/lib && $(CP) \
-	  ld-*.so ld-*.so.* libc-*.so libc.so.*  libm-*.so libm.so.* \
-	  libresolv-*.so libresolv.so.* libpthread-*.so libpthread.so.* \
-	  $(BUILDDIR_INITRAMFS_ROOTFS)/lib
-	cd $(linux_BUILDDIR) && $(linux_DIR)/usr/gen_initramfs.sh \
-	  -o $(BUILDDIR_INITRAMFS)/initramfs.cpio \
-	  $(BUILDDIR_INITRAMFS)/devlist $(BUILDDIR_INITRAMFS_ROOTFS)
-	$(RM) $(BUILDDIR_INITRAMFS)/initramfs.cpio.gz
-	gzip -9 -c $(BUILDDIR_INITRAMFS)/initramfs.cpio > \
-	  $(BUILDDIR_INITRAMFS)/initramfs.cpio.gz
-
-xm_boot_sd:
-	[ -d /media/$(USER)/BOOT/boot ] || $(MKDIR) /media/$(USER)/BOOT/boot
-	for i in $(DESTDIR_BOOT)/*; do \
-	  if [ "`basename $$i`" = "u-boot.img" ]; then \
-	    $(CP_V) $$i /media/$(USER)/BOOT/; \
-	    continue; \
-	  fi; \
-	  if [ "`basename $$i`" = "MLO" ]; then \
-	    $(CP_V) $$i /media/$(USER)/BOOT/; \
-	    continue; \
-	  fi; \
-	  $(CP_V) $$i /media/$(USER)/BOOT/boot; \
-	done
-
-xm_boot: xm_boot_linux_LOADADDR?=0x81000000# 0x82000000
-xm_boot: xm_boot_dtb_LOADADDR?=0x82000000# 0x83000000
-xm_boot: xm_boot_initramfs_LOADADDR?=0x82100000# 0x83100000
-xm_boot:
-	@echo "... Manipulate utilities package"
-	$(MAKE) $(addprefix $(@)_,tools)
-	@echo "... Manipulate bootloader and kernel package"
-	[ -d "$(DESTDIR_BOOT)" ] || $(MKDIR) $(DESTDIR_BOOT)
-	$(CP) $(ub_BUILDDIR)/MLO $(ub_BUILDDIR)/u-boot.img \
-	  $(DESTDIR_BOOT)/
-	$(MAKE) LOADADDR=$(xm_boot_linux_LOADADDR) linux_uImage
-	$(CP) $(linux_BUILDDIR)/arch/arm/boot/zImage \
-	  $(linux_BUILDDIR)/arch/arm/boot/uImage \
-	  $(linux_BUILDDIR)/arch/arm/boot/dts/omap3-beagle-xm-ab.dtb \
-	  $(DESTDIR_BOOT)/
-	$(MAKE) $(addprefix $(@)_,initramfs)
-	$(CP) $(BUILDDIR_INITRAMFS)/initramfs.cpio.gz $(DESTDIR_BOOT)/
-	mkimage -n 'bbq01 initramfs' -A arm -O linux -T ramdisk -C none \
-	  -a $(xm_boot_initramfs_LOADADDR) -e $(xm_boot_initramfs_LOADADDR) \
-	  -d $(BUILDDIR_INITRAMFS)/initramfs.cpio.gz $(DESTDIR_BOOT)/uInitramfs
-	@echo "... Generate boot script"
-	[ -d "$(BUILDDIR)" ] || $(MKDIR) $(BUILDDIR)
-	@echo -n "" >  $(BUILDDIR)/$(APP_PLATFORM)_boot.sh
-	@echo "setenv bootargs console=ttyS2,115200n8 root=/dev/ram0" \
-	  | tee -a $(BUILDDIR)/$(APP_PLATFORM)_boot.sh
-	@echo "setenv loadaddr $(xm_boot_linux_LOADADDR)" \
-	  | tee -a $(BUILDDIR)/$(APP_PLATFORM)_boot.sh
-	@echo "setenv fdtaddr $(xm_boot_dtb_LOADADDR)" \
-	  | tee -a $(BUILDDIR)/$(APP_PLATFORM)_boot.sh
-	@echo "setenv rdaddr $(xm_boot_initramfs_LOADADDR)" \
-	  | tee -a $(BUILDDIR)/$(APP_PLATFORM)_boot.sh
-	@echo "fatload mmc 0:1 \$${loadaddr} /boot/uImage" \
-	  | tee -a $(BUILDDIR)/$(APP_PLATFORM)_boot.sh
-	@echo "fatload mmc 0:1 \$${fdtaddr} /boot/omap3-beagle-xm-ab.dtb" \
-	  | tee -a $(BUILDDIR)/$(APP_PLATFORM)_boot.sh
-	@echo "setenv initrd_high 0xffffffff" \
-	  | tee -a $(BUILDDIR)/$(APP_PLATFORM)_boot.sh
-	@echo "fatload mmc 0:1 \$${rdaddr} /boot/uInitramfs" \
-	  | tee -a $(BUILDDIR)/$(APP_PLATFORM)_boot.sh
-	@echo "bootm \$${loadaddr} \$${rdaddr} \$${fdtaddr}" \
-	  | tee -a $(BUILDDIR)/$(APP_PLATFORM)_boot.sh
-	@echo "bootm \$${loadaddr} - \$${fdtaddr}" \
-	  | tee -a $(BUILDDIR)/$(APP_PLATFORM)_boot.sh
-	mkimage -n "boot script" -A arm -O linux -T script -C none \
-	  -d $(BUILDDIR)/$(APP_PLATFORM)_boot.sh $(DESTDIR_BOOT)/boot.scr
-	@echo "... Manipulate image tree"
-	[ -d "$(BUILDDIR)" ] || $(MKDIR) $(BUILDDIR)
-	sed -e "s/\$$ITS_KERNEL1_DATA/$(subst /,\/,$(linux_BUILDDIR)/arch/arm/boot/zImage)/" \
-	  -e "s/\$$ITS_KERNEL1_LOADADDR/$(xm_boot_linux_LOADADDR)/" \
-	  -e "s/\$$ITS_KERNEL1_ENTRYADDR/$(xm_boot_linux_LOADADDR)/" \
-	  -e "s/\$$ITS_RAMDISK1_DATA/$(subst /,\/,$(BUILDDIR_INITRAMFS)/initramfs\.cpio\.gz)/" \
-	  -e "s/\$$ITS_FDT1_DATA/$(subst /,\/,$(linux_BUILDDIR)/arch/arm/boot/dts/omap3-beagle-xm-ab\.dtb)/" \
-	  < $(PROJDIR)/xm_its_template | tee $(BUILDDIR)/xm_cfg1.its
-	mkimage -f $(BUILDDIR)/xm_cfg1.its $(DESTDIR_BOOT)/uImage.fit
-	[ -d /media/joelai/BOOT ] && $(MAKE) xm_boot_sd \
-	  && gio mount -e /media/joelai/BOOT || true
-
-#------------------------------------
-# dep: linux ub bb
-#
-xm_rootfs:
-	[ -d "$(BUILDDIR_ROOTFS)" ] || $(MKDIR) $(BUILDDIR_ROOTFS)
-	$(MAKE) linux_modules
-	$(MAKE) INSTALL_HDR_PATH=$(BUILDDIR_ROOTFS)/usr \
-	  INSTALL_MOD_PATH=$(BUILDDIR_ROOTFS) \
-	  linux_modules_install linux_headers_install
-	[ -d $(linux_BUILDDIR)/Documentation/output ] && \
-	  tar -Jcvf $(DESTDIR)/linux-docs.tar.xz --show-transformed-name \
-	    --transform=s/output/linux-docs/ -C $(linux_BUILDDIR)/Documentation \
-	    output
-	[ -d $(ub_BUILDDIR)/doc/output ] && \
-	  tar -Jcvf $(DESTDIR)/uboot-docs.tar.xz --show-transformed-name \
-	    --transform=s/output/uboot-docs/ -C $(ub_BUILDDIR)/doc \
-	    output
-	[ -d $(bb_BUILDDIR)/docs ] && \
-	  tar -Jcvf $(DESTDIR)/busybox-docs.tar.xz --show-transformed-name \
-	    --transform=s/docs/busybox-docs/ -C $(bb_BUILDDIR) \
-	    docs
 
 #------------------------------------
 #
