@@ -598,7 +598,7 @@ libcap_%: | $(libcap_BUILDDIR)/Makefile
 #
 systemd_DIR=$(PKGDIR2)/systemd
 systemd_BUILDDIR=$(BUILDDIR)/systemd-$(APP_BUILD)
-systemd_PKGDEP=libcap dbus utilinux gperf pcre2
+systemd_PKGDEP=libcap dbus utilinux gperf pcre2 kmod
 systemd_MAKE=$(MAKE) -C $(systemd_BUILDDIR)
 ifneq ($(strip $(filter bpi,$(APP_PLATFORM))),)
 systemd_MESONS_SETUPARGS+=--cross-file=$(PROJDIR)/builder/meson-bpi.ini
@@ -618,7 +618,7 @@ systemd_defconfig $(systemd_BUILDDIR)/build.ninja:
 		  --prefix=/ --sysconfdir=/etc \
 	      --localstatedir=/var -Dblkid=true -Dbuildtype=release \
 		  -Ddefault-dnssec=no -Dfirstboot=false -Dinstall-tests=false \
-          -Dldconfig=false -Drootprefix= -Drootlibdir=/lib -Dsplit-usr=true \
+          -Dldconfig=true -Drootprefix= -Drootlibdir=/lib -Dsplit-usr=true \
 		  -Dsysusers=false \
 		  -Dkmod-path=/bin/kmod -Dtelinit-path=/bin/systemctl \
 		  -Dsulogin-path=/sbin/sulogin -Dmount-path=/bin/mount \
@@ -963,6 +963,11 @@ utilinux_CFGPARAM_$(APP_PLATFORM)+=--without-python --disable-use-tty-group \
 $(eval $(call AC_BUILD2,utilinux $(PKGDIR2)/util-linux $(BUILDDIR)/utilinux-$(APP_BUILD)))
 
 #------------------------------------
+#
+kmod_CFGPARAM_$(APP_PLATFORM)+=--disable-test-modules
+$(eval $(call AC_BUILD2,kmod $(PKGDIR2)/kmod $(BUILDDIR2)/kmod-$(APP_BUILD)))
+
+#------------------------------------
 # dep: libudev (systemd)
 #
 libusb_PKGDEP=systemd
@@ -971,7 +976,9 @@ $(eval $(call AC_BUILD2,libusb $(PKGDIR2)/libusb $(BUILDDIR2)/libusb-$(APP_BUILD
 #------------------------------------
 # dep: libusb
 #
-openocd_PKGDEP=libusb
+openocd_PKGDEP=libusb libgpiod
+openocd_CFGENV_$(APP_PLATFORM)+=$(BUILD_PKGCFG_ENV)
+openocd_CFGPARAM_$(APP_PLATFORM)+=--enable-sysfsgpio
 $(eval $(call AC_BUILD2,openocd $(PKGDIR2)/openocd $(BUILDDIR2)/openocd-$(APP_BUILD)))
 
 #------------------------------------
@@ -1042,6 +1049,13 @@ libevent_footprint $(libevent_BUILDDIR)_footprint:
 $(eval $(call AC_BUILD3_DIST_INSTALL,libevent))
 $(eval $(call AC_BUILD3_DISTCLEAN,libevent))
 $(eval $(call AC_BUILD3_FOOT,libevent))
+
+#------------------------------------
+#
+openssh_PKGDEP=openssl libpam
+openssh_CFGPARAM_$(APP_PLATFORM)+=--with-pam --with-pie
+openssh_CFGPARAM_$(APP_PLATFORM)+=--with-ssl-engine
+$(eval $(call AC_BUILD2,openssh $(PKGDIR2)/openssh $(BUILDDIR2)/openssh-$(APP_BUILD)))
 
 #------------------------------------
 # dep ncursesw libevent
@@ -1577,7 +1591,7 @@ $(eval $(call DEPBUILD,linux_dtbs,,linux_Image.gz))
 $(eval $(call DEPBUILD,linux_headers_install,,linux_dtbs))
 
 $(foreach pkg,libacl libxml2 libtextstyle dbus libcap systemd avahi mtdutil \
-    ethtool tmux alsautils ff iw hostapd wpasup \
+    ethtool tmux alsautils ff iw hostapd wpasup libusb openocd \
     ,$(eval $(call DEPBUILD2,$(pkg),_dist_install,$($(pkg)_PKGDEP))))
 
 ub20_dist:
@@ -1650,12 +1664,13 @@ bpi_dist_initramfs: | $(kernelrelease)
 
 rootfs: ROOTFSDIR=$(dist_DIR)/rootfs
 rootfs $(dist_DIR)/rootfs:
-	@for i in dev proc root mnt media sys tmp var/run var/lock \
+	@for i in dev proc root mnt media sys tmp \
+	    var/run var/lock var/spool var/tmp var/cache \
 	    lib/firmware lib64 usr/lib usr/lib64; do \
 	  [ -d $(or $(ROOTFSDIR),$@)/$$i ] || $(MKDIR) $(or $(ROOTFSDIR),$@)/$$i; \
 	done
 
-DIST_DEBUG_SYSTEMD=1
+# DIST_DEBUG_SYSTEMD=1
 bpi_dist: | $(dist_DIR)/rootfs $(kernelrelease)
 	if [ -z "$(dist_DIR)" ] || [ "$(abspath $(dist_DIR))" = "/" ]; then \
 	  false "Invalid dist_DIR"; \
@@ -1674,10 +1689,12 @@ ifneq ($(strip $(DIST_DEBUG_SYSTEMD)),1)
 endif
 ifneq ($(strip $(DIST_DEBUG_SYSTEMD)),1)
 	$(MAKE) $(BUILDPARALLEL:%=-j%) $(patsubst %,DEPBUILD_%_dist_install, \
-	    mtdutil hostapd ff alsautils avahi)
+	    mtdutil hostapd ff alsautils avahi kmod)
 endif
 	$(MAKE) $(BUILDPARALLEL:%=-j%) $(patsubst %,DEPBUILD_%_dist_install, \
-	    tmux ethtool wpasup iw systemd)
+	    tmux ethtool wpasup iw systemd libusb)
+	# $(MAKE) $(BUILDPARALLEL:%=-j%) $(patsubst %,DEPBUILD_%_dist_install, \
+	#     openocd)
 	$(MAKE) $(BUILDPARALLEL:%=-j%) bb_dist_install locale_install \
 	    ncursesw_terminfo_dist_install
 	@echo -e "$(ANSI_GREEN)Install booting files$(ANSI_NORMAL)"
@@ -1757,16 +1774,21 @@ bpi_dist_systemdinit:
 	fi
 	$(RM) $(dist_DIR)/rootfs/sbin/init
 	ln -sf ../lib/systemd/systemd $(dist_DIR)/rootfs/sbin/init
-	@rsync -av --info=progress -I $(wildcard $(PROJDIR)/prebuilt/systemdinit/*) \
-	    $(dist_DIR)/rootfs/
-	@rsync -av --info=progress -I $(wildcard $(PROJDIR)/prebuilt/$(APP_PLATFORM)/systemdinit/*) \
-	    $(dist_DIR)/rootfs/
+	for i in var/lib/dbus var/lib/systemd; do \
+	  [ -d "$(dist_DIR)/rootfs/${i}" ] || $(MKDIR) ${i}; \
+	done
 	for i in blkid cap dbus-1 fdisk mount pamc pam_misc pam pcre2-8 \
- 	    pcre2-posix psx smartcols uuid acl attr crypto ssl; do \
+ 	    pcre2-posix psx smartcols uuid acl attr crypto ssl kmod; do \
 	  for j in `find $(dist_DIR)/rootfs/lib/ -iname lib$${i}.so*`; do \
 	    ln -sf -v ../lib/$$(basename $${j}) $(dist_DIR)/rootfs/lib64/; \
 	  done; \
 	done
+	@rsync -av --info=progress -I $(wildcard $(PROJDIR)/prebuilt/systemdinit/common/*) \
+	    $(dist_DIR)/rootfs/
+	@rsync -av --info=progress -I $(wildcard $(PROJDIR)/prebuilt/$(APP_PLATFORM)/systemdinit/*) \
+	    $(dist_DIR)/rootfs/
+	[ -d "$(dist_DIR)/rootfs/etc/systemd/system" ] || $(MKDIR) $(dist_DIR)/rootfs/etc/systemd/system
+	ln -sf /lib/systemd/system/multi-user.target $(dist_DIR)/rootfs/etc/systemd/system/default.target
 
 # sudo dd if=$(dist_DIR)/boot/u-boot-sunxi-with-spl.bin of=/dev/sdxxx bs=1024 seek=8
 bpi_dist_sd:

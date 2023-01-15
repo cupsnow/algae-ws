@@ -1,6 +1,6 @@
 #!/bin/sh
 
-. /etc/init.d/func
+. /sbin/func.sh
 
 _pri_tag="testhostapd"
 
@@ -35,7 +35,7 @@ _pri_hostapdcfg=/var/run/hostapd.conf
 cat <<-EOFCFG >$_pri_hostapdcfg
 interface=wlan0
 driver=nl80211
-ssid=Eve Play-CE62
+ssid=algae
 country_code=TW
 hw_mode=g
 channel=6

@@ -1,0 +1,12 @@
+[Unit]
+Description=Kernel firmware ignore_sysfs_fallback
+DefaultDependencies=no
+Conflicts=shutdown.target
+ConditionPathIsReadWrite=/proc/sys/kernel/firmware_config/ignore_sysfs_fallback
+Before=systemd-modules-load.service shutdown.target
+
+[Service]
+ExecStart=sh -c "echo 1 > /proc/sys/kernel/firmware_config/ignore_sysfs_fallback"
+
+[Install]
+WantedBy=default.target

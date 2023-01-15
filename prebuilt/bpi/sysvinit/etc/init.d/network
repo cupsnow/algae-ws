@@ -1,4 +1,4 @@
 #!/bin/sh
 
-. /etc/init.d/func
+. /sbin/func.sh
 

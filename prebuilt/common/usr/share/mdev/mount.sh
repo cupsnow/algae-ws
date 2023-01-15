@@ -1,6 +1,6 @@
 #!/bin/sh
 
-. /etc/init.d/func
+. /sbin/func.sh
 
 _pri_tag="mdev-mount"
 

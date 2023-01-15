@@ -1,6 +1,6 @@
 #!/bin/sh
 
-. /etc/init.d/func
+. /sbin/func.sh
 
 check_refactory () {
   [ -f $oob_cfg ] || return 0
@@ -27,8 +27,8 @@ check_promisc () {
 check_snhash () {
   [ -f $snhash_cfg ] || return 0
   
-  _pri_sn=`$(/etc/init.d/func_test get_inient1 $macaddr_cfg macaddr | sed -e "s/://g")`
-  [ -z "$_pri_sn" ] && _pri_sn=`$(/etc/init.d/func_test macaddr_gen)`
+  _pri_sn=`$(/sbin/func.sh_test get_inient1 $macaddr_cfg macaddr | sed -e "s/://g")`
+  [ -z "$_pri_sn" ] && _pri_sn=`$(/sbin/func.sh_test macaddr_gen)`
   _pri_hash=
 }
 

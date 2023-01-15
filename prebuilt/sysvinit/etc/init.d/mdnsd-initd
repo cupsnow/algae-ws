@@ -1,6 +1,6 @@
 #!/bin/sh
 
-. /etc/init.d/func
+. /sbin/func.sh
 
 _pri_bn="$(basename $0)"
 _pri_tag="${_pri_bn}[$$]"
