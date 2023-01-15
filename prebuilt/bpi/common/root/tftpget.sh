@@ -75,76 +75,18 @@ if [ "$1" = "tftpput" ] || [ "$1" = "put" ] || [ "$1" = "-p" ]; then
   exit
 fi
 
-prebuilt_common_dir="algae-ws/algae/prebuilt/common"
-prebuilt_algae_dir="algae-ws/algae/prebuilt/algae/common"
-
 for i in "$@"; do
   case $i in
-  $(basename $0))
-    tftpget_x "algae-ws/algae/builder/$i"
+  $(basename $0)|tftpget.sh|func.sh|wpasup)
+    tftpget_x "algae-ws/algae/prebuilt/bpi/common/root/tftpget.sh"
+    tftpget_x "algae-ws/algae/prebuilt/common/sbin/func.sh" /sbin/func.sh
+    tftpget_x "algae-ws/algae/prebuilt/common/sbin/wpasup" /sbin/wpasup
     ;;
-  admin)
-    admin_rel_builddir="algae-ws/build/admin-aarch64"
-    admin_dbg_builddir="algae-ws/algae/build/admin-aarch64"
-
-    tftpget_x "${admin_rel_builddir}/.libs/libadmin.so.0.0.0" \
-      "/lib/libadmin.so.0.0.0" || \
-      tftpget_x "${admin_dbg_builddir}/.libs/libadmin.so.0.0.0" \
-        "/lib/libadmin.so.0.0.0" 
-    tftpget_n "${admin_rel_builddir}/.libs/libadmin.so.0" \
-      "/lib/libadmin.so.0" || \
-      tftpget_n "${admin_dbg_builddir}/.libs/libadmin.so.0" \
-        "/lib/libadmin.so.0" 
-    tftpget_n "${admin_rel_builddir}/.libs/libadmin.so" \
-      "/lib/libadmin.so" || \
-      tftpget_n "${admin_dbg_builddir}/.libs/libadmin.so" \
-        "/lib/libadmin.so" 
-    
-    tftpget_x "${admin_rel_builddir}/.libs/admin" \
-      "/bin/admin" || \
-      tftpget_x "${admin_dbg_builddir}/.libs/admin" \
-        "/bin/admin" 
-        
-    tftpget_x "${admin_rel_builddir}/.libs/test1" || \
-      tftpget_x "${admin_dbg_builddir}/.libs/test1"
-
-    tftpget_n "algae-ws/algae/package/admin/test/admin2.html" \
-      "/var/www/admin2.html"
-    ;;
-  www)
-    tftpget_n "${prebuilt_algae_dir}/var/www/admin.html" \
-      "/var/www/admin.html"
-    tftpget_n "${prebuilt_algae_dir}/etc/lighttpd.conf" \
-      "/etc/lighttpd.conf"
-    tftpget_x "${prebuilt_algae_dir}/etc/init.d/lighttpd-initd" \
-      "/etc/init.d/lighttpd-initd"
-    ;;
-  ifplugd|zcip|udhcpc|mdev)
-    tftpget_x "${prebuilt_algae_dir}/etc/ifplugd/ifplugd.action" \
-      "/etc/ifplugd/ifplugd.action"
-    tftpget_x "${prebuilt_common_dir}/usr/share/zcip/default.script" \
-      "/usr/share/zcip/default.script"
-    tftpget_x "${prebuilt_common_dir}/sbin/zcipwrapper" \
-      "/sbin/zcipwrapper"
-    tftpget_x "${prebuilt_common_dir}/usr/share/udhcpc/default.script" \
-      "/usr/share/udhcpc/default.script"
-    tftpget_x "${prebuilt_common_dir}/etc/init.d/mdev-initd" \
-      "/etc/init.d/mdev-initd"
-    tftpget_n "${prebuilt_common_dir}/etc/mdev.conf" \
-      "/etc/mdev.conf"
-    for i in mount.sh eth.sh default.sh; do
-      tftpget_x "${prebuilt_common_dir}/usr/share/mdev/$i" \
-        "/usr/share/mdev/$i"
-    done
-    ;;
-  wpasup)
-    tftpget_x "${prebuilt_common_dir}/sbin/wpasup" \
-      "/sbin/wpasup"
-    tftpget_n "algae-ws/algae/builder/wpasup.conf"
-    ;;
-  cryptodev)
-    tftpget_n "algae-ws/build/cryptodev-aarch64/cryptodev.ko" \
-      "/lib/modules/$(uname -r)/extra/cryptodev.ko"
+  openocd)
+    tftpget_n "algae-ws/algae/package/mkr4000/openocd/bpi-openocd-interface.cfg"
+    tftpget_n "algae-ws/algae/package/mkr4000/openocd/mkr4000-target.cfg"
+    tftpget_n "algae-ws/algae/package/mkr4000/openocd/mkr4000-flash-bootloader.cfg"
+    tftpget_n "algae-ws/algae/package/mkr4000/openocd/samd21_sam_ba_arduino_mkrvidor4000.bin"
     ;;
   *)
     tftpget_x $i

@@ -1,7 +1,10 @@
 # Table of Contents <!-- omit in toc -->
 - [Setup](#setup)
 - [Boot](#boot)
+	- [bpi-m64](#bpi-m64)
 	- [Download to memory and execute](#download-to-memory-and-execute)
+- [bpi-m64](#bpi-m64-1)
+	- [LED](#led)
 - [Garage](#garage)
 
 
@@ -42,6 +45,14 @@ The uboot.env size must match menuconfig, otherwize lead to CRC error when boot
 	  booti 0x40200000 0x4ff00000 0x4fa00000
 
 	> booti will unpack uInitramfs to find size; if use initramfs.cpio.gz, booti 2nd argument need manually append filesize
+
+# bpi-m64
+## LED
+| GPIO | net  | color |
+| ---- | ---- | ----- |
+| PD24 | LED0 |
+| PE14 | LED1 |
+| PE15 | LED2 |
 
 # Garage
 

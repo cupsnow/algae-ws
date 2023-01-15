@@ -17,7 +17,7 @@ BUILDDIR2=$(abspath $(PROJDIR)/../build)
 PKGDIR2=$(abspath $(PROJDIR)/..)
 
 # ath9k_htc
-APP_ATTR_bpi?=bpi ath9k_htc
+APP_ATTR_bpi?=bpi ath9k_htc gdbserver
 APP_ATTR_ub20?=ub20
 export APP_ATTR?=$(APP_ATTR_bpi) $(APP_ATTR_BUILD_HOST)
 
@@ -974,7 +974,7 @@ libusb_PKGDEP=systemd
 $(eval $(call AC_BUILD2,libusb $(PKGDIR2)/libusb $(BUILDDIR2)/libusb-$(APP_BUILD)))
 
 #------------------------------------
-# dep: libusb
+# dep: libusb libgpiod-v1.6.3
 #
 openocd_PKGDEP=libusb libgpiod
 openocd_CFGENV_$(APP_PLATFORM)+=$(BUILD_PKGCFG_ENV)
@@ -1134,7 +1134,7 @@ $(eval $(call AC_BUILD3_FOOT,libnl))
 
 #------------------------------------
 #
-$(eval $(call AC_BUILD3_HEAD,libgpiod $(PKGDIR2)/libgpiod $(BUILDDIR2)/libgpiod-$(APP_BUILD)))
+$(eval $(call AC_BUILD3_HEAD,libgpiod $(PKGDIR2)/libgpiod-v1 $(BUILDDIR2)/libgpiod-$(APP_BUILD)))
 libgpiod_defconfig $(libgpiod_BUILDDIR)/Makefile: $(libgpiod_BUILDDIR)/config.cache
 $(libgpiod_BUILDDIR)/config.cache:
 	[ -d "$(libgpiod_BUILDDIR)" ] || $(MKDIR) $(libgpiod_BUILDDIR)
@@ -1351,7 +1351,7 @@ ifneq ($(strip $(filter debug1,$(APP_ATTR))),)
 admin_CFGPARAM_sa7715+=--enable-debug
 endif
 
-$(eval $(call AC_BUILD3_HEAD,admin $(PROJDIR)/package/admin $(BUILDDIR2)/admin-$(APP_BUILD)))
+$(eval $(call AC_BUILD3_HEAD,admin $(PROJDIR)/package/adm $(BUILDDIR2)/admin-$(APP_BUILD)))
 $(eval $(call AC_BUILD3_DEFCONFIG,admin))
 $(eval $(call AC_BUILD3_DIST_INSTALL,admin,$(admin_DIR)/include/admin/sa7715.h))
 $(eval $(call AC_BUILD3_DISTCLEAN,admin))
@@ -1693,8 +1693,8 @@ ifneq ($(strip $(DIST_DEBUG_SYSTEMD)),1)
 endif
 	$(MAKE) $(BUILDPARALLEL:%=-j%) $(patsubst %,DEPBUILD_%_dist_install, \
 	    tmux ethtool wpasup iw systemd libusb)
-	# $(MAKE) $(BUILDPARALLEL:%=-j%) $(patsubst %,DEPBUILD_%_dist_install, \
-	#     openocd)
+	$(MAKE) $(BUILDPARALLEL:%=-j%) $(patsubst %,DEPBUILD_%_dist_install, \
+	    openocd)
 	$(MAKE) $(BUILDPARALLEL:%=-j%) bb_dist_install locale_install \
 	    ncursesw_terminfo_dist_install
 	@echo -e "$(ANSI_GREEN)Install booting files$(ANSI_NORMAL)"
@@ -1743,6 +1743,10 @@ endif
 	$(MAKE) DESTDIR=$(dist_DIR)/rootfs ap6212_install
 ifneq ($(strip $(filter ath9k_htc,$(APP_ATTR))),)
 	$(MAKE) DESTDIR=$(dist_DIR)/rootfs ath9k_install
+endif
+ifneq ($(strip $(filter gdbserver,$(APP_ATTR))),)
+	$(CP) -v $(TOOLCHAIN_SYSROOT)/usr/bin/gdbserver \
+	    $(dist_DIR)/rootfs/sbin/ $(if $(dist_log),&>> $(dist_log))
 endif
 	@$(MAKE) dist_strip_DIR=$(dist_DIR)/rootfs/ dist_strip_log=$(dist_log) \
 	    dist_strip

@@ -3,7 +3,7 @@
 func_involved="$(( $func_involved + 1 ))"
 [ $func_involved -le 1 ] || echo "func_involved: $func_involved"
 
-persist_cfg="/media/cfg"
+persist_cfg="/etc"
 accname_cfg="${persist_cfg}/acc_name"
 hostname_cfg="${persist_cfg}/hostname"
 wpasup_cfg="${persist_cfg}/wpa_supplicant.conf"
