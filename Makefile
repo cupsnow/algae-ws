@@ -18,13 +18,16 @@ PKGDIR2=$(abspath $(PROJDIR)/..)
 
 # ath9k_htc
 APP_ATTR_bpi?=bpi ath9k_htc gdbserver
+APP_ATTR_bbb?=bbb ath9k_htc gdbserver
 APP_ATTR_ub20?=ub20
 export APP_ATTR?=$(APP_ATTR_bpi) $(APP_ATTR_BUILD_HOST)
 
-APP_PLATFORM=$(strip $(filter bpi ub20,$(APP_ATTR)))
+APP_PLATFORM=$(strip $(filter bpi ub20 bbb,$(APP_ATTR)))
 
 ifneq ($(strip $(filter bpi,$(APP_PLATFORM))),)
 APP_BUILD=aarch64
+else ifneq ($(strip $(filter bbb,$(APP_PLATFORM))),)
+APP_BUILD=arm
 else
 APP_BUILD=$(APP_PLATFORM)
 endif
@@ -33,6 +36,9 @@ ifneq ($(strip $(filter bpi,$(APP_ATTR))),)
 $(eval $(call DECL_TOOLCHAIN_GCC,$(HOME)/07_sw/gcc-aarch64-none-linux-gnu))
 $(eval $(call DECL_TOOLCHAIN_GCC,$(HOME)/07_sw/or1k-linux-musl,OR1K))
 EXTRA_PATH+=$(TOOLCHAIN_PATH:%=%/bin) $(OR1K_TOOLCHAIN_PATH:%=%/bin)
+else ifneq ($(strip $(filter bbb,$(APP_PLATFORM))),)
+$(eval $(call DECL_TOOLCHAIN_GCC,$(HOME)/07_sw/gcc-arm-none-linux-gnueabihf))
+EXTRA_PATH+=$(TOOLCHAIN_PATH:%=%/bin)
 else ifneq ($(strip $(filter ub20,$(APP_PLATFORM))),)
 TOOLCHAIN_SYSROOT=$(abspath $(shell gcc -print-sysroot))
 TOOLCHAIN_TARGET=$(shell gcc -dumpmachine)
@@ -72,6 +78,10 @@ help:
 ifeq ($(strip $(V)),1)
 	$(BUILD_PKGCFG_ENV) pkg-config --list-all
 endif
+
+exec-pkg-config:
+	$(BUILD_PKGCFG_ENV) $(@:exec-%=%) $(ARGS)
+
 
 FORCE:# keep this comment to work
 # # keep this comment to work
@@ -198,14 +208,16 @@ crust_%: $(crust_BUILDDIR)/.config
 # dep for bpi: atf_bl31, crust_scp
 #
 ub_DIR?=$(PKGDIR2)/uboot
-ub_BUILDDIR?=$(BUILDDIR)/uboot-$(APP_PLATFORM)
+ub_BUILDDIR?=$(BUILDDIR2)/uboot-$(APP_PLATFORM)
+ifneq ($(strip $(filter bpi,$(APP_ATTR))),)
 ub_PKGDEP=atf_bl31 crust_scp
+endif
 
 ub_DEF_MAKE_bpi+=BL31=$(atf_BUILDDIR)/sun50i_a64/debug/bl31.bin \
     SCP=$(or $(wildcard $(crust_BUILDDIR)/scp/scp.bin),/dev/null)
 
 ub_DEF_MAKE?=$(MAKE) ARCH=arm CROSS_COMPILE=$(CROSS_COMPILE) \
-    KBUILD_OUTPUT=$(ub_BUILDDIR) CONFIG_TOOLS_DEBUG=1 \
+    O=$(ub_BUILDDIR) CONFIG_TOOLS_DEBUG=1 \
 	$(ub_DEF_MAKE_$(APP_PLATFORM))
 
 ub_MAKE=$(ub_DEF_MAKE) -C $(ub_BUILDDIR)
@@ -223,9 +235,13 @@ APP_PLATFORM_ub_defconfig:
 	  $(ub_DEF_MAKE) -C $(ub_DIR) $(DEFCFG); \
 	fi
 
-bpi_ub_defconfig: DOTCFG=$(PROJDIR)/bananapi_m64_defconfig
+bpi_ub_defconfig: DOTCFG=$(PROJDIR)/uboot-bananapi_m64_defconfig
 bpi_ub_defconfig: DEFCFG=bananapi_m64_defconfig
 bpi_ub_defconfig: APP_PLATFORM_ub_defconfig
+
+bbb_ub_defconfig: DOTCFG=$(PROJDIR)/uboot-am335x_boneblack_vboot_defconfig
+bbb_ub_defconfig: DEFCFG=am335x_boneblack_vboot_defconfig
+bbb_ub_defconfig: APP_PLATFORM_ub_defconfig
 
 ub_defconfig $(ub_BUILDDIR)/.config:
 	$(ub_DEF_MAKE) -C $(ub_DIR) mrproper
@@ -275,6 +291,7 @@ linux_DIR?=$(PKGDIR2)/linux
 linux_BUILDDIR?=$(BUILDDIR2)/linux-$(APP_PLATFORM)
 
 linux_DEF_MAKEPARAM_bpi+=ARCH=arm64
+linux_DEF_MAKEPARAM_bbb+=ARCH=arm
 
 linux_DEF_MAKE?=$(MAKE) $(linux_DEF_MAKEPARAM_$(APP_PLATFORM)) \
     CROSS_COMPILE=$(CROSS_COMPILE)
@@ -291,16 +308,19 @@ linux_mrproper linux_help:
 
 APP_PLATFORM_linux_defconfig:
 	$(MAKE) linux_mrproper
+	[ -d "$(linux_BUILDDIR)" ] || $(MKDIR) $(linux_BUILDDIR)
 	if [ -f "$(DOTCFG)" ]; then \
-	  $(MKDIR) $(linux_BUILDDIR) && \
 	  $(CP) $(DOTCFG) $(linux_BUILDDIR)/.config && \
 	  { yes "" | $(linux_MAKE) -f $(linux_DIR)/Makefile oldconfig; }; \
 	else \
 	  $(linux_MAKE) -f $(linux_DIR)/Makefile $(DEFCFG); \
 	fi
 
-bpi_linux_defconfig: DOTCFG=$(PROJDIR)/linux_bpi.config
+bpi_linux_defconfig: DOTCFG=$(PROJDIR)/linux-bpi.config
 bpi_linux_defconfig: DEFCFG=defconfig
+
+bbb_linux_defconfig: DOTCFG=$(PROJDIR)/linux-bbb.config
+bbb_linux_defconfig: DEFCFG=multi_v7_defconfig
 
 $(APP_PLATFORM)_linux_defconfig: APP_PLATFORM_linux_defconfig
 
@@ -490,6 +510,7 @@ $(eval $(call AC_BUILD2,libtextstyle $(PKGDIR2)/gettext/libtextstyle $(BUILDDIR)
 
 # hack log: remove .la and .pc file
 # hack log: skip man1 which failed to generate since cross_compile
+gettextrt_PKGDEP=libiconv
 $(eval $(call AC_BUILD2,gettextrt $(PKGDIR2)/gettext/gettext-runtime $(BUILDDIR)/gettextrt-$(APP_BUILD)))
 
 # failed to build ...
@@ -541,6 +562,7 @@ gperf_%: $(gperf_BUILDDIR)/Makefile
 # hack log: failed re-generate xml doc
 #
 libpam_CFGPARAM_$(APP_PLATFORM)+=--disable-doc #--disable-regenerate-docu
+libpam_CFGPARAM_$(APP_PLATFORM)+=--disable-rpath
 $(eval $(call AC_BUILD3_HEAD,libpam $(PKGDIR2)/libpam $(BUILDDIR2)/libpam-$(APP_BUILD)))
 $(eval $(call AC_BUILD3_DEFCONFIG,libpam $(PKGDIR2)/libpam))
 $(eval $(call AC_BUILD3_DIST_INSTALL,libpam $(PKGDIR2)/libpam))
@@ -549,6 +571,9 @@ $(eval $(call AC_BUILD3_DISTCLEAN,libpam $(PKGDIR2)/libpam))
 libpam_install: $(libpam_BUILDDIR)/Makefile
 	$(libpam_MAKE) $(BUILDPARALLEL:%=-j%) $(@:libpam_%=%)
 	$(MKDIR) $(DESTDIR)/include/security
+	for i in libpamc.la libpam.la libpam_misc.la; do \
+	    [ ! -f "$(DESTDIR)/lib/$${i}" ] || $(RM) $(DESTDIR)/lib/$${i}; \
+	done
 	for i in $(libpam_DIR)/libpam/include/security/* \
 	    $(libpam_DIR)/libpam_misc/include/security/* \
 		$(libpam_DIR)/libpamc/include/security/*; do \
@@ -602,6 +627,8 @@ systemd_PKGDEP=libcap dbus utilinux gperf pcre2 kmod
 systemd_MAKE=$(MAKE) -C $(systemd_BUILDDIR)
 ifneq ($(strip $(filter bpi,$(APP_PLATFORM))),)
 systemd_MESONS_SETUPARGS+=--cross-file=$(PROJDIR)/builder/meson-bpi.ini
+else ifneq ($(strip $(filter bbb,$(APP_PLATFORM))),)
+systemd_MESONS_SETUPARGS+=--cross-file=$(PROJDIR)/builder/meson-bbb.ini
 endif
 
 $(eval $(call AC_BUILD3_HEAD,libnl $(PKGDIR2)/libnl $(BUILDDIR2)/libnl-$(APP_BUILD)))
@@ -960,7 +987,7 @@ ncursesw_%: $(ncursesw_BUILDDIR)/Makefile
 #
 utilinux_CFGPARAM_$(APP_PLATFORM)+=--without-python --disable-use-tty-group \
     --disable-makeinstall-chown --disable-makeinstall-setuid
-$(eval $(call AC_BUILD2,utilinux $(PKGDIR2)/util-linux $(BUILDDIR)/utilinux-$(APP_BUILD)))
+$(eval $(call AC_BUILD2,utilinux $(PKGDIR2)/util-linux $(BUILDDIR2)/utilinux-$(APP_BUILD)))
 
 #------------------------------------
 #
@@ -1072,7 +1099,11 @@ libcjson_DIR=$(PKGDIR2)/cjson
 libcjson_BUILDDIR?=$(BUILDDIR2)/libcjson-$(APP_BUILD)
 libcjson_MAKE=$(MAKE) -C $(libcjson_BUILDDIR)
 
-ifneq ($(strip $(filter sa7715 som1 wlsom1,$(APP_ATTR))),)
+ifneq ($(strip $(filter bpi,$(APP_ATTR))),)
+libcjson_CMAKEPARAM_$(APP_PLATFORM)+=-DCMAKE_SYSTEM_NAME=linux \
+    -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
+    -DCMAKE_C_COMPILER=$(CC) -DCMAKE_CXX_COMPILER=$(C++)
+else ifneq ($(strip $(filter bbb,$(APP_ATTR))),)
 libcjson_CMAKEPARAM_$(APP_PLATFORM)+=-DCMAKE_SYSTEM_NAME=linux \
     -DCMAKE_SYSTEM_PROCESSOR=arm \
     -DCMAKE_C_COMPILER=$(CC) -DCMAKE_CXX_COMPILER=$(C++)
@@ -1157,7 +1188,7 @@ ff_LIBDIR+=$(BUILD_SYSROOT)/lib64 $(BUILD_SYSROOT)/usr/lib64 \
     $(BUILD_SYSROOT)/lib $(BUILD_SYSROOT)/usr/lib
 ifneq ($(strip $(filter bpi,$(APP_ATTR))),)
 ff_CFGPARAM_$(APP_PLATFORM)+=--arch=aarch64  --enable-ffplay
-else ifneq ($(strip $(filter xm,$(APP_ATTR))),)
+else ifneq ($(strip $(filter bbb,$(APP_ATTR))),)
 ff_CFGPARAM_$(APP_PLATFORM)+=--arch=arm --cpu=cortex-a5 --enable-vfpv3 \
     --enable-ffplay
 else
@@ -1450,6 +1481,8 @@ crda: $(crda_BUILDDIR)/Makefile
 #
 dist_DIR?=$(DESTDIR)
 
+dist_log=$(BUILDDIR)/dist_log-$(APP_PLATFORM).txt
+
 # reference from linux_dtbs
 dist_DTINCDIR+=$(linux_DIR)/scripts/dtc/include-prefixes
 
@@ -1466,6 +1499,9 @@ dist_kernaddr=0x40200000
 dist_fdtaddr=0x4fa00000
 dist_scraddr=0x4fc00000
 dist_rdaddr=0x4ff00000
+else ifneq ($(strip $(filter bbb,$(APP_ATTR))),)
+dist_dts=$(PROJDIR)/linux-am335x-boneblack.dts
+dist_dtb=$(linux_BUILDDIR)/arch/arm/boot/dts/am335x-boneblack.dtb
 endif
 
 dist dist_sd:
@@ -1587,11 +1623,15 @@ DEPBUILD2=$(call DEPBUILD,$(addsuffix $(strip $(2)),$(1)),$(2),$(3))
 
 $(eval $(call DEPBUILD,ub,,$(ub_PKGDEP)))
 $(eval $(call DEPBUILD,ub_envtools_install,,ub))
+ifneq ($(strip $(filter bpi,$(APP_ATTR))),)
 $(eval $(call DEPBUILD,linux_dtbs,,linux_Image.gz))
+else ifneq ($(strip $(filter bbb,$(APP_ATTR))),)
+$(eval $(call DEPBUILD,linux_dtbs,,linux_zImage))
+endif
 $(eval $(call DEPBUILD,linux_headers_install,,linux_dtbs))
 
-$(foreach pkg,libacl libxml2 libtextstyle dbus libcap systemd avahi mtdutil \
-    ethtool tmux alsautils ff iw hostapd wpasup libusb openocd \
+$(foreach pkg,libacl libxml2 libtextstyle gettextrt dbus libcap systemd \
+    avahi mtdutil ethtool tmux alsautils ff iw hostapd wpasup libusb openocd \
     ,$(eval $(call DEPBUILD2,$(pkg),_dist_install,$($(pkg)_PKGDEP))))
 
 ub20_dist:
@@ -1602,7 +1642,7 @@ ub20_dist:
 	$(MAKE) iw_install
 	$(MAKE) wpasup_install
 
-bpi_dist_dtb:
+APP_PLATFORM_dist_dtb:
 	@[ -d $(dist_DIR)/boot ] || $(MKDIR) $(dist_DIR)/boot
 	if [ -f "$(dist_dts)" ]; then \
 	  echo -e "$(ANSI_GREEN)Compile linux device tree$(ANSI_NORMAL)"; \
@@ -1621,46 +1661,7 @@ bpi_dist_dtb:
 	    > $(BUILDDIR)/$$(cat $(dtbbasename))-dec.dts
 	@chmod 664 $(dist_DIR)/boot/$$(cat $(dtbbasename)).dtb
 
-bpi_dist_initramfs: | $(kernelrelease)
-	$(RM) $(BUILD_SYSROOT)/lib/modules
-	[ -x $(PROJDIR)/tool/bin/tic ] || $(MAKE) ncursesw_host_dist_install
-	[ -x $(PROJDIR)/tool/bin/dtc ] || $(MAKE) dtc_dist_install
-	[ -x $(PROJDIR)/tool/bin/mkimage ] || $(MAKE) ub_tools_install
-	$(MAKE) $(BUILDPARALLEL:%=-j%) atf_bl31 crust_scp linux_Image.gz
-	$(MAKE) $(BUILDPARALLEL:%=-j%) ub linux_dtbs
-	$(MAKE) $(BUILDPARALLEL:%=-j%) ub_envtools linux_modules
-	$(MAKE) $(BUILDPARALLEL:%=-j%) ub_envtools_install linux_headers_install \
-	    linux_modules_install zlib_dist_install
-	[ -d $(dist_DIR)/boot ] || $(MKDIR) $(dist_DIR)/boot
-	rsync -av --info=progress $(ub_BUILDDIR)/u-boot-sunxi-with-spl.bin \
-	    $(linux_BUILDDIR)/arch/arm64/boot/Image.gz $(dist_dtb) \
-	    $(dist_DIR)/boot/
-	$(MAKE) dist_dtb
-	[ -d $(BUILDDIR)/initramfs ] || $(MKDIR) $(BUILDDIR)/initramfs
-	cd $(TOOLCHAIN_SYSROOT) && \
-	  rsync -avR --info=progress --ignore-missing-args \
-	      $(foreach i,audit/ gconv/ locale/ libasan.* libgfortran.* libubsan.* \
-		    *.a *.o *.la,--exclude="${i}") \
-	      lib lib64 usr/lib usr/lib64 \
-	      $(BUILDDIR)/initramfs/
-	cd $(TOOLCHAIN_SYSROOT) && \
-	  rsync -avR --info=progress --ignore-missing-args \
-	      $(foreach i,sbin/sln usr/bin/gdbserver,--exclude="${i}") \
-	      sbin usr/bin usr/sbin \
-	      $(BUILDDIR)/initramfs/
-	$(MAKE) DESTDIR=$(BUILDDIR)/initramfs bb_dist_install
-	rsync -av --info=progress --ignore-missing-args $(PROJDIR)/prebuilt/initramfs/common/* $(BUILDDIR)/initramfs/
-	echo -n "" > $(BUILDDIR)/devlist
-	echo "dir /dev 0755 0 0" >> $(BUILDDIR)/devlist
-	echo "nod /dev/console 0600 0 0 c 5 1" >> $(BUILDDIR)/devlist
-	echo "nod /dev/loop0 644 0 0 b 7 0" >> $(BUILDDIR)/devlist
-	echo "dir /proc 755 0 0" >> $(BUILDDIR)/devlist
-	echo "dir /sys 755 0 0" >> $(BUILDDIR)/devlist
-	cd $(linux_BUILDDIR) && $(linux_DIR)/usr/gen_initramfs.sh \
-	    -l $(BUILDDIR)/initramfs.d $(BUILDDIR)/devlist $(BUILDDIR)/initramfs \
-	  | gzip -9 >$(dist_DIR)/initramfs.cpio.gz
-	mkimage -n "initramfs" -A arm64 -O linux -T ramdisk -C gzip \
-	    -d $(dist_DIR)/initramfs.cpio.gz $(dist_DIR)/uInitramfs
+bpi_dist_dtb: APP_PLATFORM_dist_dtb
 
 rootfs: ROOTFSDIR=$(dist_DIR)/rootfs
 rootfs $(dist_DIR)/rootfs:
@@ -1670,7 +1671,6 @@ rootfs $(dist_DIR)/rootfs:
 	  [ -d $(or $(ROOTFSDIR),$@)/$$i ] || $(MKDIR) $(or $(ROOTFSDIR),$@)/$$i; \
 	done
 
-# DIST_DEBUG_SYSTEMD=1
 bpi_dist: | $(dist_DIR)/rootfs $(kernelrelease)
 	if [ -z "$(dist_DIR)" ] || [ "$(abspath $(dist_DIR))" = "/" ]; then \
 	  false "Invalid dist_DIR"; \
@@ -1683,14 +1683,10 @@ bpi_dist: | $(dist_DIR)/rootfs $(kernelrelease)
 	@[ -x $(PROJDIR)/tool/bin/mkimage ] || $(MAKE) ub_tools_install
 	$(MAKE) $(BUILDPARALLEL:%=-j%) $(addprefix DEPBUILD_,ub_envtools_install \
 	    linux_headers_install)
-ifneq ($(strip $(DIST_DEBUG_SYSTEMD)),1)
 	$(MAKE) $(BUILDPARALLEL:%=-j%) linux_modules
 	$(MAKE) $(BUILDPARALLEL:%=-j%) linux_modules_install
-endif
-ifneq ($(strip $(DIST_DEBUG_SYSTEMD)),1)
 	$(MAKE) $(BUILDPARALLEL:%=-j%) $(patsubst %,DEPBUILD_%_dist_install, \
 	    mtdutil hostapd ff alsautils avahi kmod)
-endif
 	$(MAKE) $(BUILDPARALLEL:%=-j%) $(patsubst %,DEPBUILD_%_dist_install, \
 	    tmux ethtool wpasup iw systemd libusb)
 	$(MAKE) $(BUILDPARALLEL:%=-j%) $(patsubst %,DEPBUILD_%_dist_install, \
@@ -1770,23 +1766,25 @@ endif
 	fi
 	$(MAKE) $(APP_PLATFORM)_dist_systemdinit
 
-bpi_dist_sysvinit:
+norm_dist_sysvinit:
 
-bpi_dist_systemdinit:
-	if [ ! -f $(dist_DIR)/rootfs/lib/systemd/systemd ]; then \
+norm_dist_systemdinit:
+	if [ ! -d $(dist_DIR)/rootfs/lib/systemd/system ]; then \
 	  false "No systemd"; \
 	fi
 	$(RM) $(dist_DIR)/rootfs/sbin/init
 	ln -sf ../lib/systemd/systemd $(dist_DIR)/rootfs/sbin/init
-	for i in var/lib/dbus var/lib/systemd; do \
-	  [ -d "$(dist_DIR)/rootfs/${i}" ] || $(MKDIR) ${i}; \
+	@for i in var/lib/dbus var/lib/systemd; do \
+	  [ -d "$(dist_DIR)/rootfs/$${i}" ] || $(MKDIR) $${i}; \
 	done
-	for i in blkid cap dbus-1 fdisk mount pamc pam_misc pam pcre2-8 \
- 	    pcre2-posix psx smartcols uuid acl attr crypto ssl kmod; do \
-	  for j in `find $(dist_DIR)/rootfs/lib/ -iname lib$${i}.so*`; do \
-	    ln -sf -v ../lib/$$(basename $${j}) $(dist_DIR)/rootfs/lib64/; \
+	@if [ -d "$(dist_DIR)/rootfs/lib64" ]; then \
+	  for i in blkid cap dbus-1 fdisk mount pamc pam_misc pam pcre2-8 \
+ 	      pcre2-posix psx smartcols uuid acl attr crypto ssl kmod; do \
+	    for j in `find $(dist_DIR)/rootfs/lib/ -iname lib$${i}.so*`; do \
+	      ln -sf -v ../lib/$$(basename $${j}) $(dist_DIR)/rootfs/lib64/; \
+	    done; \
 	  done; \
-	done
+	fi
 	@rsync -av --info=progress -I $(wildcard $(PROJDIR)/prebuilt/systemdinit/common/*) \
 	    $(dist_DIR)/rootfs/
 	@rsync -av --info=progress -I $(wildcard $(PROJDIR)/prebuilt/$(APP_PLATFORM)/systemdinit/*) \
@@ -1794,11 +1792,118 @@ bpi_dist_systemdinit:
 	[ -d "$(dist_DIR)/rootfs/etc/systemd/system" ] || $(MKDIR) $(dist_DIR)/rootfs/etc/systemd/system
 	ln -sf /lib/systemd/system/multi-user.target $(dist_DIR)/rootfs/etc/systemd/system/default.target
 
+bpi_dist_systemdinit: norm_dist_systemdinit
+
 # sudo dd if=$(dist_DIR)/boot/u-boot-sunxi-with-spl.bin of=/dev/sdxxx bs=1024 seek=8
 bpi_dist_sd:
 	rsync -av --info=progress $(dist_DIR)/boot/* /media/$(USER)/BOOT/
 	rsync -av --info=progress $(dist_DIR)/rootfs/* /media/$(USER)/rootfs/
 	sync; sync
+
+#------------------------------------
+#
+bbb_dist_dtb: APP_PLATFORM_dist_dtb
+
+bbb_dist: | $(dist_DIR)/rootfs $(kernelrelease)
+	if [ -z "$(dist_DIR)" ] || [ "$(abspath $(dist_DIR))" = "/" ]; then \
+	  false "Invalid dist_DIR"; \
+	fi
+	@for prefix in $(BUILD_SYSROOT) $(dist_DIR)/rootfs; do \
+	  $(RM) -v $${prefix}/lib/modules; \
+	done
+	@[ -x $(PROJDIR)/tool/bin/tic ] || $(MAKE) ncursesw_host_dist_install
+	@[ -x $(PROJDIR)/tool/bin/dtc ] || $(MAKE) dtc_dist_install
+	@[ -x $(PROJDIR)/tool/bin/mkimage ] || $(MAKE) ub_tools_install
+	$(MAKE) $(BUILDPARALLEL:%=-j%) $(addprefix DEPBUILD_,ub_envtools_install \
+	    linux_headers_install)
+	$(MAKE) $(BUILDPARALLEL:%=-j%) linux_modules
+	$(MAKE) $(BUILDPARALLEL:%=-j%) linux_modules_install
+	$(MAKE) $(BUILDPARALLEL:%=-j%) $(patsubst %,DEPBUILD_%_dist_install, \
+	    mtdutil hostapd ff alsautils avahi kmod)
+	$(MAKE) $(BUILDPARALLEL:%=-j%) $(patsubst %,DEPBUILD_%_dist_install, \
+	    tmux ethtool wpasup iw systemd libusb)
+	$(MAKE) $(BUILDPARALLEL:%=-j%) $(patsubst %,DEPBUILD_%_dist_install, \
+	    openocd)
+	$(MAKE) $(BUILDPARALLEL:%=-j%) bb_dist_install locale_install \
+	    ncursesw_terminfo_dist_install
+	@echo -e "$(ANSI_GREEN)Install booting files$(ANSI_NORMAL)"
+	@[ -d $(dist_DIR)/boot ] || $(MKDIR) $(dist_DIR)/boot
+	@rsync -av --info=progress $(ub_BUILDDIR)/MLO $(ub_BUILDDIR)/u-boot-dtb.img \
+		$(ub_BUILDDIR)/u-boot.img \
+	    $(linux_BUILDDIR)/arch/arm/boot/zImage $(dist_dtb) \
+	    $(dist_DIR)/boot/
+	$(MAKE) $(@)_dtb
+	mkimage -C none -A arm -T script -d $(PROJDIR)/uboot-bootscript-bbb.sh \
+	    $(dist_DIR)/boot/boot.scr
+	@[ -d $(dist_DIR)/rootfs ] || $(MKDIR) $(dist_DIR)/rootfs
+	@for i in lib lib64 usr/lib usr/lib64; do \
+	  if [ -d "$(TOOLCHAIN_SYSROOT)/$$i" ]; then \
+		cd $(TOOLCHAIN_SYSROOT) && rsync -av --info=progress --ignore-missing-args \
+			$(foreach i,audit/ gconv/ locale/ libasan.* libgfortran.* libubsan.* \
+				*.a *.o *.la,--exclude="${i}") \
+			$$i/* $(dist_DIR)/rootfs/$$i/; \
+	  fi; \
+	done
+	@cd $(TOOLCHAIN_SYSROOT) && rsync -avR --info=progress --ignore-missing-args \
+	    $(foreach i,sbin/sln usr/bin/gdbserver,--exclude="${i}") \
+	    sbin usr/bin usr/sbin $(dist_DIR)/rootfs/
+	@for i in lib lib64 usr/lib usr/lib64; do \
+	  if [ -d $(BUILD_SYSROOT)/$$i ]; then \
+	    cd $(BUILD_SYSROOT) && rsync -av --info=progress --ignore-missing-args \
+	        --exclude="*.a" --exclude="*.la" --exclude="*.o" \
+	        $$i/* $(dist_DIR)/rootfs/$$i/; \
+	  fi; \
+	done
+	@cd $(BUILD_SYSROOT) && rsync -avR --info=progress --ignore-missing-args \
+	    $(foreach i,bin/amidi etc/xattr.conf share/aclocal share/doc \
+	    share/ffmpeg share/locale share/man share/sounds,--exclude="${i}") \
+	    etc bin sbin share usr/bin usr/sbin usr/share var linuxrc $(dist_DIR)/rootfs/
+	@rsync -av --info=progress $(wlregdb_DIR)/regulatory.db $(wlregdb_DIR)/regulatory.db.p7s \
+	    $(dist_DIR)/rootfs/lib/firmware/
+ifneq ($(strip $(filter bpi,$(APP_PLATFORM))),)
+	$(MAKE) DESTDIR=$(dist_DIR)/rootfs ap6212_install
+endif
+ifneq ($(strip $(filter ath9k_htc,$(APP_ATTR))),)
+	$(MAKE) DESTDIR=$(dist_DIR)/rootfs ath9k_install
+endif
+ifneq ($(strip $(filter gdbserver,$(APP_ATTR))),)
+	$(CP) -v $(TOOLCHAIN_SYSROOT)/usr/bin/gdbserver \
+	    $(dist_DIR)/rootfs/sbin/ $(if $(dist_log),&>> $(dist_log))
+endif
+	@$(MAKE) dist_strip_DIR=$(dist_DIR)/rootfs/ dist_strip_log=$(dist_log) \
+	    dist_strip
+	@echo -e "$(ANSI_GREEN)Install prebuilt$(ANSI_NORMAL)"
+	@rsync -av --info=progress -I $(wildcard $(PROJDIR)/prebuilt/common/*) \
+	    $(dist_DIR)/rootfs/
+	@rsync -av --info=progress -I $(wildcard $(PROJDIR)/prebuilt/$(APP_PLATFORM)/common/*) \
+	    $(dist_DIR)/rootfs/
+	$(CP) $(dist_DIR)/rootfs/etc/skel/.profile $(dist_DIR)/rootfs/etc/skel/.exrc \
+	    $(dist_DIR)/rootfs/etc/skel/.tmux.conf \
+	    $(dist_DIR)/rootfs/root/
+	ln -sf /var/run/udhcpc/resolv.conf $(dist_DIR)/rootfs/etc/resolv.conf
+	ln -sf /var/run/ld.so.cache $(dist_DIR)/rootfs/etc/ld.so.cache
+	@if [ -e "$(dist_DIR)/rootfs/lib/modules/$$(cat $(kernelrelease))" ]; then \
+	  echo -e "$(ANSI_GREEN)Generate kernel module dependencies$(ANSI_NORMAL)"; \
+	  $(bb_DIR)/examples/depmod.pl \
+	      -b "$(dist_DIR)/rootfs/lib/modules/$$(cat $(kernelrelease))" \
+	      -F $(linux_BUILDDIR)/System.map; \
+	else \
+	  echo -e "$(ANSI_GREEN)Skip generate kernel module dependencies$(ANSI_NORMAL)"; \
+	fi
+	$(MAKE) $(APP_PLATFORM)_dist_systemdinit
+
+bbb_dist_sysvinit:
+
+bbb_dist_systemdinit: norm_dist_systemdinit
+
+# sudo dd if=$(dist_DIR)/boot/u-boot-sunxi-with-spl.bin of=/dev/sdxxx bs=1024 seek=8
+bbb_dist_sd:
+	rsync -av --info=progress $(dist_DIR)/boot/* /media/$(USER)/BOOT/
+	rsync -av --info=progress $(dist_DIR)/rootfs/* /media/$(USER)/rootfs/
+	sync; sync
+
+
+
 
 #------------------------------------
 #
